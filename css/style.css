@@ -140,3 +140,102 @@ body.phone #app { min-height: 100dvh; display: flex; }
 .ctl-status p { color: var(--muted); font-size: 1.1rem; }
 .ctl-status.win h2 { color: var(--green); }
 .ctl-status.lose h2 { color: var(--red); }
+
+/* ---------- Space Battles (TV) ---------- */
+.sb { position: relative; height: 100%; display: flex; flex-direction: column; padding: 1.5vh 2vw; gap: 1vh; background: #04050f; }
+.sb-hud { display: flex; align-items: center; justify-content: space-between; gap: 20px; font-size: clamp(1rem, 1.8vw, 1.5rem); font-weight: 800; }
+.sb-timer { font-variant-numeric: tabular-nums; font-size: 1.4em; min-width: 4ch; text-align: right; }
+.sb-timer.urgent { color: var(--red); }
+.sb-subhud { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 2em; flex-wrap: wrap; font-weight: 700; }
+.sb-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.sb-chip { background: var(--bg2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; color: var(--muted); }
+.sb-chip.ready { color: var(--green); border-color: var(--green); }
+.sb-chip.off { opacity: .5; }
+.sb-board { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.sb-board canvas { border-radius: 8px; box-shadow: 0 0 60px rgba(60,90,255,.15); }
+.sb-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(4, 5, 15, .78); padding: 3vh 3vw; }
+.sb-overlay.show { display: flex; }
+.sb-panel { background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 32px 44px; text-align: center; max-width: 1200px; width: 100%; display: grid; gap: 16px; max-height: 94vh; overflow: auto; }
+.sb-panel h2 { font-size: clamp(2rem, 4vw, 3.4rem); font-weight: 900; }
+.sb-panel p { font-size: 1.2rem; }
+.sb-factions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: left; }
+.sb-faction { border: 2px solid var(--fc); border-radius: 18px; padding: 18px; background: var(--bg2); display: grid; gap: 10px; align-content: start; }
+.sb-faction h3 { margin: 0; color: var(--fc); font-size: 1.5rem; }
+.sb-faction.soon { opacity: .4; border-style: dashed; filter: grayscale(.8); }
+.sb-soon { font-weight: 800; font-size: 1.4rem !important; color: var(--muted); }
+.sb-plist, .sb-slist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sb-plist li { font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.sb-plist li b, .sb-plist li em { margin-left: auto; font-size: 1rem; }
+.sb-slist li { display: flex; justify-content: space-between; gap: 8px; background: var(--card); border-radius: 10px; padding: 6px 10px; font-weight: 600; }
+.sb-problems { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; color: var(--accent); font-weight: 700; font-size: 1.15rem; }
+.sb-results { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; text-align: left; }
+.sb-results h3 { margin: 0 0 8px; }
+.sb-results ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sb-results li { display: flex; align-items: center; gap: 6px; background: var(--bg2); border-radius: 10px; padding: 6px 12px; font-weight: 700; }
+.sb-results .tag { margin-left: auto; font-size: .85rem; padding: 3px 10px; border-radius: 999px; }
+.tag.ok { background: rgba(81,207,102,.2); color: var(--green); }
+.tag.dead { background: rgba(255,107,107,.2); color: var(--red); }
+
+/* ---------- Space Battles (phone) ---------- */
+.sbp { width: 100%; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; }
+.sbp-head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px; background: var(--card); border-bottom: 3px solid var(--fc); font-weight: 700; font-size: .95rem; }
+.sbp-timer { font-variant-numeric: tabular-nums; margin-left: 6px; color: var(--accent); }
+.sbp-timer.urgent { color: var(--red); }
+.sbp-body { padding: 12px 14px 40px; display: grid; gap: 12px; }
+.sbp-h { margin: 6px 0 0; font-size: 1.1rem; }
+.sbp-small { font-size: .9rem; margin: 0; }
+.sbp-factions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sbp-factions button { border: 2px solid var(--fc); background: var(--bg2); border-radius: 14px; padding: 12px 6px; display: grid; gap: 4px; cursor: pointer; }
+.sbp-factions button b { color: var(--fc); font-size: 1rem; }
+.sbp-factions button small { color: var(--muted); }
+.sbp-factions button.on { background: var(--fc); }
+.sbp-factions button.on b, .sbp-factions button.on small { color: #10131f; }
+.sbp-factions button:disabled { opacity: .35; border-style: dashed; cursor: not-allowed; }
+.sbp-claims, .sbp-fleet, .sbp-segs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sbp-claims li { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.sbp-claims li.mine { border-color: var(--accent); }
+.sbp-claims li div { display: grid; gap: 2px; }
+.sbp-claims small, .sbp-fleet small { color: var(--muted); }
+.sbp-claims button, .sbp-tabs button, .sbp-speed button, .sbp-segs button {
+  border: 2px solid var(--line); background: var(--bg2); border-radius: 12px; padding: 10px 14px; font-weight: 800; cursor: pointer;
+}
+.sbp-claims button.primary { background: var(--accent); color: #1b1300; border-color: var(--accent); }
+.sbp-owner { font-weight: 800; }
+.sbp-ready { width: 100%; }
+.sbp-ready:disabled { opacity: .45; cursor: not-allowed; }
+.sbp-problems { list-style: none; margin: 0; padding: 10px 12px; display: grid; gap: 4px; color: var(--accent); background: var(--bg2); border-radius: 12px; font-weight: 600; font-size: .9rem; }
+.sbp-watch { text-align: center; padding: 24px 8px; display: grid; gap: 10px; }
+.sbp-watch h2 { font-size: 1.9rem; }
+.sbp-watch p { color: var(--muted); }
+.sbp-watch.win h2 { color: var(--green); }
+.sbp-watch.lose h2 { color: var(--red); }
+.sbp-fleet li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 4px; }
+.sbp-fleet li.dead { opacity: .5; }
+.sbp-fleet-top { display: flex; justify-content: space-between; gap: 8px; }
+.sbp-bar { height: 6px; background: rgba(0,0,0,.5); border-radius: 3px; overflow: hidden; }
+.sbp-bar span { display: block; height: 100%; }
+.sbp-stats { font-size: .9rem; }
+.sbp-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.sbp-tabs button.on { background: var(--accent); color: #1b1300; border-color: var(--accent); }
+.sbp-shipname { display: grid; gap: 2px; }
+.sbp-map { width: 100%; display: block; border-radius: 12px; border: 1px solid var(--line); background: #05071a; }
+.sbp-speed { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--card); border-radius: 14px; padding: 8px; }
+.sbp-speed div { display: grid; text-align: center; }
+.sbp-speed small { color: var(--muted); }
+.sbp-speed button { font-size: 1.6rem; min-width: 64px; }
+.sbp-speed button:disabled, .sbp-segs button:disabled { opacity: .3; }
+.sbp-segs li { display: grid; grid-template-columns: 1fr auto 1.3fr auto; align-items: center; gap: 8px; background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 6px 8px; }
+.sbp-segs li.on { border-color: var(--accent); }
+.sbp-segs li b { text-align: center; }
+.sbp-segs li small { color: var(--muted); font-weight: 600; }
+.sbp-notice { color: var(--accent); font-weight: 700; margin: 0; }
+.sbp-notice:empty { display: none; }
+.sbp-keys { font-size: .8rem; text-align: center; }
+.sbp-arc { background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 10px; display: grid; gap: 6px; }
+.sbp-arc.on { border-color: var(--accent); }
+.sbp-arc-head { display: flex; justify-content: space-between; gap: 8px; }
+.sbp-arc-head small { color: var(--muted); }
+.sbp-target { display: flex; justify-content: space-between; gap: 8px; text-align: left; border: 2px solid var(--line); background: var(--bg2); border-radius: 10px; padding: 10px; font-weight: 700; cursor: pointer; }
+.sbp-target small { color: var(--muted); }
+.sbp-target.on { border-color: var(--accent); background: rgba(255,183,3,.15); }
+.sbp-target.cursor { outline: 2px dashed var(--muted); outline-offset: 2px; }
