@@ -43,7 +43,7 @@ const publicShip = (s) => ({
   id: s.id, type: s.type, faction: s.faction, owner: s.owner, x: s.x, y: s.y,
   heading: s.heading, speed: s.speed, hull: s.hull, shields: { ...s.shields }, alive: s.alive,
   burn: !!s.burn, used: { ...(s.used || {}) }, disrupted: !!s.disrupted, grappled: !!s.grappled,
-  acidDue: { ...(s.acidDue || {}) },
+  acidDue: { ...(s.acidDue || {}) }, recover: !!s.recover,
   // Stance: null while it's still secret (Plan Movement); lastStance can't be picked again.
   stance: s.stance ? { ...s.stance } : null, lastStance: s.lastStance || 'balanced',
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
@@ -1147,7 +1147,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     const frac = Math.max(0, hull / def.hull);
     ctx.fillStyle = frac > 0.5 ? '#51cf66' : frac > 0.25 ? '#fcc419' : '#ff6b6b';
     ctx.fillRect(cx - barW / 2, by, barW * frac, 5);
-    const burnTag = phase === 'planMove' ? `${s.burn ? ' 🚀' : ''}${s.disrupted ? ' ⚡' : ''}${s.grappled ? ' ⚓' : ''}` : '';
+    const burnTag = phase === 'planMove' ? `${s.recover ? ' 🛟' : ''}${s.burn ? ' 🚀' : ''}${s.disrupted ? ' ⚡' : ''}${s.grappled ? ' ⚓' : ''}` : '';
     // Squadrons docked inside (✈2). While ships are still moving, the count from before the launch.
     const sqList = anim?.kind === 'move' && t < anim.start + TIMING.moveMs && phoneSquads ? phoneSquads : squads;
     const docked = isCarrier(s) ? sqList.filter((q) => q.alive && q.docked && q.carrier === s.id).length : 0;

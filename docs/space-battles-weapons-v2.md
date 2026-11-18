@@ -154,7 +154,7 @@ Reach: **C** = Close, **M** = Medium, **L** = Long.
 | Acid Spitter | Djnzuar | Battery | C | 1 | 1×1 | Acid |
 | Grapple Harpoon | Djnzuar | Battery | M | 1 | 1×1 | Grapple |
 | Thorn Burst | Djnzuar | Turret | C | free | 1×N | PD |
-| Autocannon Turret | Pirates | Turret | M | 2 | 1×2 | |
+| Autocannon Turret | Pirates | Turret | M | 2 | 1×3 | |
 | Breaching Cannon | Pirates | Battery | C | 2 | 1×3 | Breaching |
 | Disruptor | Pirates | Battery | M | 1 | 1×1 | Disrupt |
 | Boarding Harpoon | Pirates | Battery | C | 1 | 1×1 | Boarding, Once |
@@ -234,6 +234,21 @@ speed (after a Full Burn) a ship uses its top-speed number. Stances still apply 
 | Free Trader | 3 | 3 | 1 | | |
 | Escort, Samurai, Rouge | | 3 | 2 | 1 | |
 | Firefly, Torpedo Boat | | 3 | 3 | 3 | 2 |
+
+### Hitting walls ✅
+
+- **Emergency thrusters:** a ship that hits the map edge or an asteroid may turn up to **6 extra clicks
+  (90°)** in the first segment of its next move, so it can turn away. It still takes the damage and
+  drops to its minimum speed. (The TV shows 🛟 next to it.) It's nudged just clear of what it hit so
+  turning in place can't touch it again.
+- **Phone warning:** if a planned path would hit the edge or an asteroid, the ghost path turns red with
+  a ✕ and a warning says which segment.
+
+### Balance changes ✅
+
+- **Autocannon Turret:** 1×2 → **1×3**.
+- **Pirate costs −2:** Firefly 8, Rouge 9, Free Trader 11, Outrider 12.
+- **Grunt hull:** 5 → **3**.
 
 ### Special abilities
 

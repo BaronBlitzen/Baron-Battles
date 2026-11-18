@@ -732,6 +732,12 @@ export function maxClicks(ship, speed, stanceId = 'balanced') {
   return Math.max(0, n - (ship.disrupted ? 1 : 0) - critCount(ship, 'thrusters'));
 }
 
+// Emergency thrusters: a ship that hit the map edge or an asteroid last move (ship.recover) may
+// turn up to MOVE.recoverClicks extra in its FIRST segment, so it can turn away from the wall.
+export function segmentClicks(ship, speed, stanceId, i) {
+  return maxClicks(ship, speed, stanceId) + (i === 0 && ship.recover ? MOVE.recoverClicks : 0);
+}
+
 // Move plan: { speed, clicks, stance: { id, zone?, target? } }.
 export function defaultMovePlan(ship) {
   const opts = speedOptions(ship);
@@ -764,8 +770,7 @@ export function sanitizeMovePlan(ship, plan, ships = [], squads = []) {
   if (!Number.isInteger(plan.speed) || !speedOptions(ship, stance.id).includes(plan.speed)) return null;
   const n = Math.max(1, plan.speed);
   if (!Array.isArray(plan.clicks) || plan.clicks.length !== n) return null;
-  const mc = maxClicks(ship, plan.speed, stance.id);
-  if (!plan.clicks.every((c) => Number.isInteger(c) && Math.abs(c) <= mc)) return null;
+  if (!plan.clicks.every((c, i) => Number.isInteger(c) && Math.abs(c) <= segmentClicks(ship, plan.speed, stance.id, i))) return null;
   const out = { speed: plan.speed, clicks: plan.clicks.slice(), stance };
   if (plan.mine && specialLeft(ship, 'mineDrop') > 0) out.mine = true;
   // Carriers: optional new order for each of its living squadrons (left out or invalid = keep the
@@ -804,6 +809,24 @@ export function poseAt(start, plan, t) {
   x += L * move * Math.cos(h * RAD);
   y += L * move * Math.sin(h * RAD);
   return { x, y, heading: h };
+}
+
+// Would this planned path hit the map edge or an asteroid (ignoring other ships, which only the
+// TV knows about)? Returns { kind: 'edge' | 'asteroid', segment, x, y } for the first hit, or null.
+// Used by the phone to warn before a crash.
+export function pathHazard(ship, plan, map, asteroids = []) {
+  const cls = classOf(ship);
+  const steps = 60;
+  for (let k = 1; k <= steps; k++) {
+    const p = poseAt(ship, plan, k / steps);
+    const edge = outOfBounds(p, cls, map);
+    const rock = !edge && asteroids.find((r) => rectHitsCircle(p, cls, r));
+    if (edge || rock) {
+      const n = Math.max(1, plan.speed);
+      return { kind: edge ? 'edge' : 'asteroid', segment: Math.min(n, Math.floor(((k - 1) / steps) * n) + 1), x: p.x, y: p.y };
+    }
+  }
+  return null;
 }
 
 // Pose at the end of every segment (for the ghost path on the phone).
@@ -894,6 +917,7 @@ export function simulateMove(ships, plans, scenario) {
     return d;
   };
   const stop = (id) => { moving.delete(id); crashed.add(id); };
+  const walled = new Map(); // id -> what it hit: { edge } or { rock } (for emergency thrusters)
 
   for (let k = 1; k <= MOVE_TICKS; k++) {
     const t = k / MOVE_TICKS;
@@ -905,6 +929,7 @@ export function simulateMove(ships, plans, scenario) {
       const edge = outOfBounds(cand[id], cls, scenario.map);
       if (edge) {
         stop(id); delete cand[id];
+        walled.set(id, { edge: true });
         const [ex, ey] = EDGE_POINT[edge];
         const p = pose[id];
         events.push({ tick: k, kind: 'edge', a: id, x: p.x, y: p.y,
@@ -914,6 +939,7 @@ export function simulateMove(ships, plans, scenario) {
       const rock = scenario.asteroids.find((r) => rectHitsCircle(cand[id], cls, r));
       if (rock) {
         stop(id); delete cand[id];
+        walled.set(id, { rock });
         const p = pose[id];
         events.push({ tick: k, kind: 'asteroid', a: id, x: (p.x + rock.x) / 2, y: (p.y + rock.y) / 2,
           damage: [hit(s, rock.x, rock.y, MOVE.asteroidDamage)] });
@@ -979,6 +1005,23 @@ export function simulateMove(ships, plans, scenario) {
 
   for (const s of sim) {
     const p = pose[s.id];
+    // Emergency thrusters: a ship that hit the edge or an asteroid gets a big first-segment turn
+    // next move. It's nudged just far enough away that turning in place can't touch it again.
+    const w = walled.get(s.id);
+    s.recover = !!w;
+    if (w) {
+      const cls = classOf(s);
+      const room = Math.hypot(cls.length, cls.width) / 2 + 0.05;
+      if (w.edge) {
+        p.x = Math.max(room, Math.min(scenario.map.w - room, p.x));
+        p.y = Math.max(room, Math.min(scenario.map.h - room, p.y));
+      } else {
+        const r = w.rock;
+        const d = Math.hypot(p.x - r.x, p.y - r.y) || 1e-6;
+        if (d < r.r + room) { p.x = r.x + ((p.x - r.x) / d) * (r.r + room); p.y = r.y + ((p.y - r.y) / d) * (r.r + room); }
+      }
+      frames[s.id][MOVE_TICKS] = { ...p };
+    }
     s.x = p.x; s.y = p.y;
     s.heading = ((p.heading % 360) + 360) % 360;
     s.speed = crashed.has(s.id) ? shipDef(s).speed[0] : plans[s.id].speed;

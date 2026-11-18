@@ -115,7 +115,7 @@ export const WEAPONS = {
   thorn: { name: 'Thorn Burst', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
     desc: 'Point-defense against squadrons.' },
   // ----- Pirates -----
-  autocannon: { name: 'Autocannon Turret', arc: 'turret', reach: 'medium', power: 2, damage: 1, shots: 2,
+  autocannon: { name: 'Autocannon Turret', arc: 'turret', reach: 'medium', power: 2, damage: 1, shots: 3,
     desc: 'Fires in any direction.' },
   breaching: { name: 'Breaching Cannon', arc: 'battery', reach: 'close', power: 2, damage: 1, shots: 3, critOn: 9,
     desc: 'Rips ships open: crits on a 9 or 10.' },
@@ -224,34 +224,34 @@ export const SHIPS = {
     name: 'Grunt', short: 'Grunt', faction: 'djnzuar', class: 'corvette', cost: 6,
     ratings: { o: 2, d: 2, m: 2 },
     desc: 'Cheap and expendable. Field a swarm of them.',
-    hull: 5, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
+    hull: 3, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
     weapons: ['plasma', 'spine'],
   },
 
   // ----- Pirates -----
   firefly: {
-    name: 'Firefly', short: 'Firefly', faction: 'pirates', class: 'corvette', cost: 10,
+    name: 'Firefly', short: 'Firefly', faction: 'pirates', class: 'corvette', cost: 8,
     ratings: { o: 2, d: 3, m: 5 },
     desc: 'Fast and nimble, and tough for a corvette. Circles its prey with a turret.',
     hull: 6, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3, 4: 3 }, power: 2,
     weapons: ['autocannon', 'disruptor'],
   },
   rouge: {
-    name: 'Rouge', short: 'Rouge', faction: 'pirates', class: 'corvette', cost: 11,
+    name: 'Rouge', short: 'Rouge', faction: 'pirates', class: 'corvette', cost: 9,
     ratings: { o: 3, d: 2, m: 4, u: 2 },
     desc: 'A fast boarder. Dives in, harpoons a ship to cripple it, and gets out.',
     hull: 5, shields: { front: 1, left: 1, right: 1, rear: 1 }, speed: [2, 4], clicks: 1, clicksAtSpeed: { 2: 3, 3: 2 }, power: 2,
     weapons: ['breaching', 'boarding'],
   },
   outrider: {
-    name: 'Outrider', short: 'Outrider', faction: 'pirates', class: 'destroyer', cost: 14,
+    name: 'Outrider', short: 'Outrider', faction: 'pirates', class: 'destroyer', cost: 12,
     ratings: { o: 3, d: 3, m: 3, u: 3 },
     desc: 'Tricky and well-rounded. Leaves mines behind for anyone chasing it.',
     hull: 8, shields: { front: 2, left: 1, right: 1, rear: 2 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 3,
     weapons: ['autocannon', 'breaching', 'disruptor'], pd: [pd('flechette', 1)], special: 'mineDrop',
   },
   freeTrader: {
-    name: 'Free Trader', short: 'Free Trader', faction: 'pirates', class: 'destroyer', cost: 13,
+    name: 'Free Trader', short: 'Free Trader', faction: 'pirates', class: 'destroyer', cost: 11,
     ratings: { o: 2, d: 3, m: 3, u: 3 },
     desc: 'Sturdy and slow but nimble, with the heaviest flak in the game and a hold full of spares.',
     hull: 9, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 3, 2: 3 }, power: 3,
@@ -274,6 +274,7 @@ export const MOVE = {
   enemyCollisionDamage: 1,
   asteroidDamage: 2,
   edgeDamage: 2,
+  recoverClicks: 6, // emergency thrusters: extra clicks in the first segment after hitting the edge or an asteroid
 };
 
 export const TIMING = {

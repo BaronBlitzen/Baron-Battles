@@ -8,7 +8,7 @@ import {
   HIT, SPECIALS,
 } from './data.js';
 import {
-  classOf, shipDef, corners, speedOptions, maxClicks, defaultMovePlan, planWaypoints,
+  classOf, shipDef, corners, speedOptions, maxClicks, segmentClicks, defaultMovePlan, planWaypoints, pathHazard,
   weaponTargets, weaponUsedUp, defaultFirePlan, arcWeapons, factionShipTypes, pointShare, fleetCost, buyProblem,
   stanceOptions, huntTarget, repairOf, maxSpeed, isSquad, squadDef, unitName,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
@@ -436,6 +436,8 @@ export function mount({ container, me, sendInput }) {
         ${s.burn ? '<p class="sbp-burn">🚀 Every ship is home: free Full Burn this round. Change speed by up to 2, up to 1 over max.</p>' : ''}
         ${s.disrupted ? '<p class="sbp-burn">⚡ Disrupted: 1 turn click less per segment this round.</p>' : ''}
         ${s.grappled ? '<p class="sbp-burn">⚓ Grappled: can\'t speed up this round.</p>' : ''}
+        ${s.recover ? '<p class="sbp-burn">🛟 Emergency thrusters: you hit something last move, so segment 1 can turn up to 90° extra.</p>' : ''}
+        ${(() => { const hz = pathHazard(s, d, state.map, state.asteroids); return hz ? `<p class="sbp-burn sbp-warn">⚠ This path hits ${hz.kind === 'edge' ? 'the map edge' : 'an asteroid'} in segment ${hz.segment} (2 damage, and you stop). Turn or slow down.</p>` : ''; })()}
         <div class="sbp-speed">
           <button data-act="speed" data-d="-1" ${d.speed > opts[0] ? '' : 'disabled'}>−</button>
           <div><b>Speed ${d.speed}</b><small>${d.speed === s.speed ? 'same as now' : d.speed > s.speed ? 'speeding up' : 'slowing down'} · ${d.speed * 2} u</small></div>
@@ -445,12 +447,12 @@ export function mount({ container, me, sendInput }) {
           ${d.clicks.map((c, i) => `
             <li class="${i === selSeg ? 'on' : ''}" data-act="seg" data-i="${i}">
               <span>Segment ${i + 1}</span>
-              <button data-act="turn" data-i="${i}" data-d="-1" ${c > -mc ? '' : 'disabled'}>◀</button>
+              <button data-act="turn" data-i="${i}" data-d="-1" ${c > -segmentClicks(s, d.speed, d.stance.id, i) ? '' : 'disabled'}>◀</button>
               <b>${turnLabel(c)}</b>
-              <button data-act="turn" data-i="${i}" data-d="1" ${c < mc ? '' : 'disabled'}>▶</button>
+              <button data-act="turn" data-i="${i}" data-d="1" ${c < segmentClicks(s, d.speed, d.stance.id, i) ? '' : 'disabled'}>▶</button>
             </li>`).join('')}
         </ul>
-        <p class="muted sbp-small">Up to ${mc} click${mc > 1 ? 's' : ''} (${mc * 15}°) per segment. Each segment turns first, then flies 2 u.</p>
+        <p class="muted sbp-small">Up to ${mc} click${mc > 1 ? 's' : ''} (${mc * 15}°) per segment${s.recover ? ', plus up to 6 more (90°) in segment 1' : ''}. Each segment turns first, then flies 2 u.</p>
         ${readyBar(myLiving().length > 1 ? 'Send orders for all ships' : 'Send orders')}
         ${fleetList()}
       </div>`;
@@ -754,7 +756,8 @@ export function mount({ container, me, sendInput }) {
     }
 
     if (path) {
-      ctx.strokeStyle = 'rgba(255,255,255,.85)';
+      const hz = pathHazard(s, moveDraft[s.id], state.map, state.asteroids);
+      ctx.strokeStyle = hz ? 'rgba(255,107,107,.9)' : 'rgba(255,255,255,.85)';
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
@@ -767,7 +770,13 @@ export function mount({ container, me, sendInput }) {
         ctx.arc(X(p.x), Y(p.y), i === selSeg ? 4 : 3, 0, Math.PI * 2);
         ctx.fill();
       });
-      outline(path[path.length - 1], s, 'rgba(255,255,255,.9)', 'rgba(255,255,255,.12)', 1.5);
+      outline(path[path.length - 1], s, hz ? '#ff6b6b' : 'rgba(255,255,255,.9)', hz ? 'rgba(255,107,107,.15)' : 'rgba(255,255,255,.12)', 1.5);
+      if (hz) {
+        ctx.strokeStyle = '#ff6b6b';
+        ctx.lineWidth = 2;
+        const r = 6;
+        ctx.beginPath(); ctx.moveTo(X(hz.x) - r, Y(hz.y) - r); ctx.lineTo(X(hz.x) + r, Y(hz.y) + r); ctx.moveTo(X(hz.x) + r, Y(hz.y) - r); ctx.lineTo(X(hz.x) - r, Y(hz.y) + r); ctx.stroke();
+      }
     }
   }
 
@@ -837,7 +846,7 @@ export function mount({ container, me, sendInput }) {
     const n = Math.max(1, speed);
     const mc = maxClicks(s, speed, d.stance.id);
     d.speed = speed;
-    d.clicks = Array.from({ length: n }, (_, i) => Math.max(-mc, Math.min(mc, d.clicks[i] || 0)));
+    d.clicks = Array.from({ length: n }, (_, i) => { const m = segmentClicks(s, speed, d.stance.id, i); return Math.max(-m, Math.min(m, d.clicks[i] || 0)); });
     selSeg = Math.min(selSeg, n - 1);
   }
 
@@ -852,7 +861,7 @@ export function mount({ container, me, sendInput }) {
   function turn(i, delta) {
     const s = shipById(selShip);
     const d = moveDraft[s.id];
-    const mc = maxClicks(s, d.speed, d.stance.id);
+    const mc = segmentClicks(s, d.speed, d.stance.id, i);
     const c = d.clicks[i] + delta;
     if (Math.abs(c) > mc) return;
     d.clicks[i] = c;
