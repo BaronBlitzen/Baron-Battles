@@ -6,7 +6,7 @@
 // { id, type, faction, owner, x, y, heading, speed, hull, shields: { front, left, right, rear }, alive }
 import {
   FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ARCS, ZONES, FLEET, STANCES, CLASS_STANCES, CRITICALS,
-  SQUADRONS, SQUADRON, WING_ORDERS,
+  SQUADRONS, SQUADRON, SQUAD_ORDERS,
 } from './data.js';
 //
 // A squadron at runtime looks like:
@@ -157,19 +157,42 @@ export function factionSquadTypes(faction) {
     .sort((a, b) => SQUADRONS[a].cost - SQUADRONS[b].cost);
 }
 
-// Living squadrons of one carrier's wing.
+// Living squadrons of one carrier (docked or launched).
 export const wingOf = (carrierId, squads) => squads.filter((q) => q.alive && q.carrier === carrierId);
 
-// Wing order from the phone: { order, target? }. Attack needs a living enemy ship. Invalid → null.
-export function sanitizeWing(ship, wing, ships) {
-  if (!wing || !WING_ORDERS[wing.order]) return null;
-  const out = { order: wing.order };
-  if (WING_ORDERS[wing.order].needsTarget) {
-    const t = ships.find((x) => x.id === wing.target);
-    if (!t || isSquad(t) || !t.alive || !isEnemy(ship, t)) return null;
+// A squadron that is out in space (alive and launched). Docked squadrons can't shoot or be shot.
+export const inSpace = (u) => u.alive && !u.docked;
+
+// One squadron's order from the phone: { order, target? } (see SQUAD_ORDERS). "Stay docked" only
+// for docked squadrons, Return only for launched ones; Attack needs a living enemy ship.
+// Invalid → null (keep the old order).
+export function sanitizeSquadOrder(q, o, ships) {
+  const def = o && SQUAD_ORDERS[o.order];
+  if (!def || (def.dockedOnly && !q.docked) || (def.launchedOnly && q.docked)) return null;
+  const out = { order: o.order };
+  if (def.needsTarget) {
+    const t = ships.find((x) => x.id === o.target);
+    if (!t || isSquad(t) || !t.alive || !isEnemy(q, t)) return null;
     out.target = t.id;
   }
   return out;
+}
+
+// Where a launched squadron appears: in a short row just behind its carrier (slot 0..2).
+export function launchSpot(carrier, slot, map) {
+  const L = classOf(carrier).length / 2 + 0.5;
+  const c = Math.cos(carrier.heading * RAD), s = Math.sin(carrier.heading * RAD);
+  const lx = -L, ly = (slot - 1) * 0.6;
+  return {
+    x: Math.max(SQUAD_R, Math.min(map.w - SQUAD_R, carrier.x + lx * c - ly * s)),
+    y: Math.max(SQUAD_R, Math.min(map.h - SQUAD_R, carrier.y + lx * s + ly * c)),
+  };
+}
+
+// Has a Return squadron reached its (living) carrier? Then it docks.
+export function canDock(q, ships) {
+  const c = ships.find((s) => s.id === q.carrier);
+  return !!(c?.alive && pointPolygonDistance(q.x, q.y, shipPolygon(c)) - SQUAD_R <= SQUADRON.latchDist);
 }
 
 const nearest = (from, list) => list.reduce((best, u) => {
@@ -177,33 +200,40 @@ const nearest = (from, list) => list.reduce((best, u) => {
   return !best || d < best.d ? { u, d } : best;
 }, null);
 
-// Where each squadron flies this round (squadrons move after ships, in straight lines, up to
-// their speed in u, ignoring asteroids and ships, stopping at the map edge with no damage).
+// Where each launched squadron flies this round (squadrons move after ships, in straight lines, up
+// to their speed in u, ignoring asteroids and ships, stopping at the map edge with no damage).
+// Each squadron follows its own order (q.order):
 //   Escort: its own spot next to the carrier (stays put if the carrier is gone).
 //   Attack: until touching the target ship (or the nearest enemy ship if the target is gone).
 //   Intercept: at the nearest enemy squadron (where it was before squadrons moved), stopping
 //              when touching it; Escort if there are none.
+//   Return: until touching its carrier (stays put if the carrier is gone).
 // `ships` = ships after their move. Returns { [squadId]: { from: {x,y}, to: {x,y} } }. Pure.
 export function planSquadMoves(squads, ships, map) {
   const out = {};
-  const living = squads.filter((q) => q.alive);
+  const flying = squads.filter(inSpace);
   const r = SQUAD_R;
   const clampX = (x) => Math.max(r, Math.min(map.w - r, x));
   const clampY = (y) => Math.max(r, Math.min(map.h - r, y));
-  for (const q of living) {
+  for (const q of flying) {
     const def = squadDef(q);
     const carrier = ships.find((s) => s.id === q.carrier);
-    const wing = carrier?.wing || { order: 'escort' };
+    const o = q.order || { order: 'escort' };
     const enemyShips = ships.filter((s) => s.alive && isEnemy(q, s));
-    const enemySquads = living.filter((o) => isEnemy(q, o));
-    let goal = null; // { x, y, stop } — stop flying when the edge distance reaches `stop`
-    let order = wing.order;
+    const enemySquads = flying.filter((x) => isEnemy(q, x));
+    let goal = null;
+    let order = o.order;
+    if (order === 'docked') order = 'escort'; // never expected for a launched squadron
     if (order === 'intercept' && !enemySquads.length) order = 'escort';
+    if (order === 'return') {
+      if (carrier?.alive) goal = { x: carrier.x, y: carrier.y, ship: carrier };
+      else goal = { x: q.x, y: q.y };
+    }
     if (order === 'attack') {
-      let t = enemyShips.find((s) => s.id === wing.target);
+      let t = enemyShips.find((s) => s.id === o.target);
       if (!t) t = nearest(q, enemyShips)?.u;
       if (t) {
-        // Aim a little to the side for each squadron of the wing, so they don't stack.
+        // Aim a little to the side for each squadron of a carrier, so they don't stack.
         const cls = classOf(t);
         const ang = Math.atan2(t.y - q.y, t.x - q.x);
         const off = (q.slot - 1) * cls.width * 0.35;
@@ -211,7 +241,6 @@ export function planSquadMoves(squads, ships, map) {
       } else order = 'escort';
     }
     if (order === 'intercept') {
-      // Aim a little to the side for each squadron of the wing, so they don't stack.
       const t = nearest(q, enemySquads).u;
       const ang = Math.atan2(t.y - q.y, t.x - q.x);
       const off = (q.slot - 1) * SQUADRON.size;
@@ -253,11 +282,12 @@ export function planSquadMoves(squads, ships, map) {
 
 // What a squadron shoots this round (rules §8, close range only, asteroids never block):
 // fighters the nearest enemy squadron, else the nearest enemy ship; bombers the reverse;
-// boarding pods nothing. Returns { target, profile } or null. `units` = ships + squadrons.
+// boarding pods nothing. Docked squadrons neither shoot nor get shot.
+// Returns { target, profile } or null. `units` = ships + squadrons.
 export function squadAttackTarget(q, units) {
   const def = squadDef(q);
-  if (def.role === 'boarding') return null;
-  const inRange = units.filter((u) => u.alive && isEnemy(q, u) && rangeBand(unitDistance(q, u)) === 'close');
+  if (def.role === 'boarding' || !inSpace(q)) return null;
+  const inRange = units.filter((u) => inSpace(u) && isEnemy(q, u) && rangeBand(unitDistance(q, u)) === 'close');
   const sq = nearest(q, inRange.filter(isSquad));
   const sh = nearest(q, inRange.filter((u) => !isSquad(u)));
   const order = def.role === 'fighter' ? [sq, sh] : [sh, sq];
@@ -273,16 +303,16 @@ export function screened(ship, ships) {
     && (w.id === ship.id || rangeBand(shipDistance(w, ship)) === 'close'));
 }
 
-// Point-defense target: the nearest living enemy squadron in close range (all PD shots go there).
+// Point-defense target: the nearest launched enemy squadron in close range (all PD shots go there).
 export function pdTarget(ship, squads) {
   if (!(shipDef(ship).pd || []).length) return null;
-  const inRange = squads.filter((q) => q.alive && isEnemy(ship, q) && rangeBand(unitDistance(ship, q)) === 'close');
+  const inRange = squads.filter((q) => inSpace(q) && isEnemy(ship, q) && rangeBand(unitDistance(ship, q)) === 'close');
   return nearest(ship, inRange)?.u || null;
 }
 
-// Boarding Pod latch: the enemy ship whose outline this pod touches (or null).
+// Boarding Pod latch: the enemy ship whose outline this (launched) pod touches (or null).
 export function latchTarget(q, ships) {
-  if (!squadDef(q).latch) return null;
+  if (!squadDef(q).latch || !inSpace(q)) return null;
   const touching = ships.filter((s) => s.alive && isEnemy(q, s)
     && pointPolygonDistance(q.x, q.y, shipPolygon(s)) - SQUAD_R <= SQUADRON.latchDist);
   return nearest(q, touching)?.u || null;
@@ -444,7 +474,7 @@ export function weaponTargets(ship, arc, wi, units, asteroids) {
   const hunt = huntTarget(ship);
   const out = [];
   for (const t of units) {
-    if (!t.alive || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
+    if (!t.alive || t.docked || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
     if (hunt && t.id !== hunt) continue;
     const dist = unitDistance(ship, t);
     const band = rangeBand(dist);
@@ -664,7 +694,7 @@ export function sanitizeStance(ship, st, ships) {
   return out;
 }
 
-export function sanitizeMovePlan(ship, plan, ships = []) {
+export function sanitizeMovePlan(ship, plan, ships = [], squads = []) {
   if (!plan) return null;
   const stance = plan.stance ? sanitizeStance(ship, plan.stance, ships) : { id: 'balanced' };
   if (!stance) return null;
@@ -674,9 +704,16 @@ export function sanitizeMovePlan(ship, plan, ships = []) {
   const mc = maxClicks(ship, plan.speed, stance.id);
   if (!plan.clicks.every((c) => Number.isInteger(c) && Math.abs(c) <= mc)) return null;
   const out = { speed: plan.speed, clicks: plan.clicks.slice(), stance };
-  // Carriers: optional new wing order (left out or invalid = keep the old one).
-  const wing = isCarrier(ship) && sanitizeWing(ship, plan.wing, ships);
-  if (wing) out.wing = wing;
+  // Carriers: optional new order for each of its living squadrons (left out or invalid = keep the
+  // old one). Comms Down is checked by the TV when the orders are applied.
+  if (isCarrier(ship) && plan.squads && typeof plan.squads === 'object') {
+    const orders = {};
+    for (const q of wingOf(ship.id, squads)) {
+      const o = sanitizeSquadOrder(q, plan.squads[q.id], ships);
+      if (o) orders[q.id] = o;
+    }
+    if (Object.keys(orders).length) out.squads = orders;
+  }
   return out;
 }
 

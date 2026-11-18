@@ -41,9 +41,10 @@ and report each step before starting the next, so the user can playtest in betwe
 3. **Stances** — **built** (decisions in rules §5 "Stance details") (rules §5, incl. the decided details, Trained helms, Samurai engineers, no-repeat rule,
    stance icons on the TV, Damage Control choice on the phone).
 4. **Criticals** — **built** (decisions in rules §7 "Critical details"). Boarding Harpoon auto-crit included.
-5. **Squadrons** — **built** (decisions in rules §8 "Squadron details"): buying them in fleet building,
-   wing orders, movement after ships, automatic attacks, point-defense, Warden Screen, Hangar repair,
-   Boarding Pods, kill points (tracked, not shown yet), Comms Down.
+5. **Squadrons** — **built** (decisions in rules §8 "Launch and order details" and "Squadron details"):
+   buying them in fleet building, docked until launched, one order per squadron (Stay docked / Escort /
+   Attack / Intercept / Return), movement after ships, automatic attacks, point-defense, Warden Screen,
+   Hangar repair (docked only), Boarding Pods, kill points (tracked, not shown yet), Comms Down.
 6. **Obstacles** (rules §2): each map picks 2 of the 5 obstacle types at random. Nebula, planet
    (gravity), debris field, mines, plus the existing random asteroids.
 7. **Missions + scores** (rules §10): kill points on the TV, Control Points, Salvage, Escort, Station
@@ -99,15 +100,21 @@ Key details:
   stance secret in `movePlans` until `resolveMove` copies it to `ship.stance`; `startPlan('planMove')` moves
   it to `lastStance`. Plan Fire input also carries `repairs { shipId: { kind, zones? } }`.
 - **Squadrons** (step 5): data.js `SQUADRONS` (role fighter/bomber/boarding, `vsSquadron` / `vsShip`
-  profiles), `SQUADRON` (size, hit penalty, escort gap, latch distance), `WING_ORDERS`; weapon flags
+  profiles), `SQUADRON` (size, hit penalty, escort gap, latch/dock distance), `SQUAD_ORDERS` /
+  `SQUAD_ORDER_LIST` (`dockedOnly`, `launchedOnly`, `launches`, `needsTarget`); weapon flags
   `fullVsSquadrons`, `noSquadrons`, `hitVsSquadron`, `pd`; ship flags `squadrons` (carrier slots) and
   `screen` (Warden). Runtime squadrons live in their own `squads` array in host.js (and `state.squads` on
-  phones): `{ id: 'q1', kind: 'squad', type, faction, owner, carrier, slot, x, y, hull, alive }`, plus
-  host-only `latched`. "Units" = ships + squadrons: `weaponTargets` / `defaultFirePlan` /
-  `sanitizeFirePlan` / `arcShots` take units. rules.js: `isSquad`, `unitDistance`, `hitChance`,
-  `planSquadMoves`, `squadAttackTarget`, `screened`, `pdTarget`, `latchTarget`, `sanitizeWing`,
-  `fleetValue(ships, f, squads)`, `killValue`. Carriers carry `wing = { order, target? }`; the Move
-  plan may carry `wing` (applied in `resolveMove` unless Comms Down). Fleet building: `fleets[id]` is
+  phones): `{ id: 'q1', kind: 'squad', type, faction, owner, carrier, slot, x, y, hull, alive, docked,
+  order: { order, target? } }`, plus host-only `latched`. Docked squadrons sit at their carrier's
+  position, aren't drawn, and can't shoot or be shot (`inSpace`). "Units" = ships + squadrons:
+  `weaponTargets` / `defaultFirePlan` / `sanitizeFirePlan` / `arcShots` take units. rules.js: `isSquad`,
+  `inSpace`, `unitDistance`, `hitChance`, `sanitizeSquadOrder`, `launchSpot`, `canDock`,
+  `planSquadMoves`, `squadAttackTarget`, `screened`, `pdTarget`, `latchTarget`,
+  `fleetValue(ships, f, squads)`, `killValue`. A carrier's Move plan may carry
+  `squads: { [squadId]: { order, target? } }` (`sanitizeMovePlan(ship, plan, ships, squads)`); `resolveMove`
+  applies them unless Comms Down, launches docked squadrons with a `launches` order at `launchSpot`
+  after the ships move, docks Return squadrons that reach the carrier, and loses docked squadrons of a
+  carrier destroyed in the Move (`resolveFire` does the same at the end of the round). Fleet building: `fleets[id]` is
   now `[{ type, wing: [squadron types] }]`; inputs `buySquad { index, squadType }`,
   `removeSquad { index, slot }`. host.js keeps `kills` (faction → points) for step 7.
 - **Criticals** (step 4): `CRITICALS` / `CRIT_POOL` in data.js (`comms` only rolls on a carrier with living squadrons). Ship field

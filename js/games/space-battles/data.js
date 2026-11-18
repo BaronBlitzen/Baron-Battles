@@ -359,14 +359,18 @@ export const SQUADRON = {
   hitPenalty: 0.2,
   minHit: 0.1,
   escortGap: 0.6, // Escort: each squadron flies to its own spot this far from the carrier's hull
-  latchDist: 0.25, // Boarding Pod: "touching" = within this distance of the ship's outline
+  latchDist: 0.25, // Boarding Pod latch / Return docking: "touching" = within this distance of the outline
 };
 
-// Wing orders (rules §8): one per carrier, given in Plan Movement. Every wing starts on Escort,
-// and keeps its last order when the player times out (or the carrier has Comms Down).
-export const WING_ORDERS = {
-  escort: { name: 'Escort', icon: '🛡', desc: 'Stay next to the carrier.' },
-  attack: { name: 'Attack', icon: '⚔', desc: 'Fly at an enemy ship and stop next to it. If it\'s destroyed, go for the nearest enemy ship.', needsTarget: true },
-  intercept: { name: 'Intercept', icon: '✈', desc: 'Fly at the nearest enemy squadron (Escort if there are none).' },
+// Squadron orders (rules §8): each squadron gets its own, in Plan Movement. Squadrons start docked
+// inside their carrier; giving a docked squadron a `launches` order launches it. Orders are kept
+// when the player times out (or the carrier has Comms Down).
+//   dockedOnly – only for docked squadrons; launchedOnly – only for launched ones.
+export const SQUAD_ORDERS = {
+  docked: { name: 'Stay docked', icon: '🏠', desc: 'Stays safe inside the carrier (can\'t shoot or be shot).', dockedOnly: true },
+  escort: { name: 'Escort', icon: '🛡', desc: 'Stay next to the carrier.', launches: true },
+  attack: { name: 'Attack', icon: '⚔', desc: 'Fly at an enemy ship and stop next to it. If it\'s destroyed, go for the nearest enemy ship.', needsTarget: true, launches: true },
+  intercept: { name: 'Intercept', icon: '✈', desc: 'Fly at the nearest enemy squadron (Escort if there are none).', launches: true },
+  return: { name: 'Return', icon: '↩', desc: 'Fly back to the carrier and dock again if it gets there.', launchedOnly: true },
 };
-export const WING_ORDER_LIST = ['escort', 'attack', 'intercept'];
+export const SQUAD_ORDER_LIST = ['docked', 'escort', 'attack', 'intercept', 'return'];

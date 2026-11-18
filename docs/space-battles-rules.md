@@ -47,7 +47,7 @@ the TV plays out the whole round at once.
   switch teams, for example "Pirates: 8 points each isn't enough for a ship (cheapest 10). Someone
   please switch teams."
 - Ships **deploy automatically**, spread evenly along their team's edge, a few units in from it,
-  facing the enemy edge. Squadrons start next to their carrier.
+  facing the enemy edge. Squadrons start docked inside their carrier.
 
 ### Factions
 
@@ -156,7 +156,7 @@ as every player who still has ships (and is online) taps **Ready**.
 
 | Step | Phones | TV |
 |---|---|---|
-| **1. Plan: Stance + Movement** | For each ship: pick a **stance**, set **speed** and **turns** (ghost path preview on the mini-map). For each carrier: give its **wing an order** | Map, timer, ✔ next to each ready player |
+| **1. Plan: Stance + Movement** | For each ship: pick a **stance**, set **speed** and **turns** (ghost path preview on the mini-map). For each carrier: give **each squadron an order** (launch, return) | Map, timer, ✔ next to each ready player |
 | **2. Move** | Watch | **Stance icons appear** over every ship. Ships move at the same time, then squadrons move |
 | **3. Plan: Fire** | For each ship: pick up to 2 arcs, and a target **for each weapon** in those arcs. Once-per-game weapons are held unless the player fires them | Map |
 | **4. Fire** | Watch | All attacks (ships, squadrons, point-defense) fire together. Damage numbers pop up. Wrecks are removed after everything lands |
@@ -164,7 +164,7 @@ as every player who still has ships (and is online) taps **Ready**.
 
 **If a player isn't ready when the timer ends:**
 - Stance: **Balanced**.
-- Movement: keep the same speed and fly straight. Wing orders stay as they were.
+- Movement: keep the same speed and fly straight. Squadron orders stay as they were (docked ones stay docked).
 - Fire: each ship fires its 2 best arcs; each weapon shoots the nearest valid target it can hit.
   Once-per-game weapons are **not** used (held).
 
@@ -325,37 +325,51 @@ PD shots go at the nearest one**.
 
 - Squadrons are small, automatic units. They have **hull but no shields or hull zones**, and they
   attack in every direction at **close range only**.
-- They start the battle next to the carrier that carries them. A carrier holds up to **3**. There is
-  **no cap** on squadrons per side.
+- A carrier holds up to **3**. There is **no cap** on squadrons per side.
+- **Docked until launched:** squadrons start the battle **docked inside their carrier**. While docked
+  they can't be targeted and don't shoot. Each squadron is launched separately (see orders below).
 - **Speed is in units per round** (Hawk speed 5 = up to 5 u per round). Squadrons fly in any direction
   with no turning limits and end as close to their goal as their speed allows.
-- **Control:** the carrier's owner gives the carrier's **wing** (all its squadrons) **one order**
-  during Plan Movement:
+- **Control:** during Plan Movement, the carrier's owner gives **each squadron its own order**:
 
 | Order | Behavior |
 |---|---|
-| **Escort** | Stay within 2 u of the carrier; attack enemy squadrons that come close |
-| **Attack [ship]** | Fly straight at that enemy ship and stop next to it. If that ship is destroyed, the wing attacks the **next nearest enemy ship** |
+| **Stay docked** | (Docked squadrons only.) Stays inside the carrier |
+| **Escort** | Stay next to the carrier; attack enemy squadrons that come close |
+| **Attack [ship]** | Fly straight at that enemy ship and stop next to it. If that ship is destroyed, attack the **next nearest enemy ship** |
 | **Intercept** | Fly at the nearest enemy squadron. If there are none, act as Escort |
+| **Return** | (Launched squadrons only.) Fly back to the carrier; if it reaches it, it docks again |
 
+- Giving a docked squadron Escort, Attack or Intercept **launches** it.
 - **Attacks** happen automatically in the Fire phase, alongside ships. **Fighters** hit the nearest
   enemy squadron in close range, otherwise the nearest ship. **Bombers** do the reverse.
 - Squadron damage to ships hits the hull zone **facing the squadron**, shields first.
 - Ships can also target squadrons with their normal weapons (§7), at lower accuracy (see below).
-- **Carrier destroyed:** its squadrons keep fighting on their last order, but get no Hangar repair.
+- **Carrier destroyed:** squadrons still docked are destroyed with it (the enemy scores their kill
+  points). Launched squadrons keep fighting on their last order.
 - **Winning:** squadrons don't keep a team alive. When a team's last **ship** is destroyed, it loses.
 - **Points:** each squadron is worth 1 kill point.
 - **Warden Screen:** enemy squadrons attacking friendly ships within close range of a Warden lose
   1 shot.
-- **Hangar repair** (Protectorate): at the end of the round, friendly squadrons within close range of
-  their carrier restore 1 hull (not above max).
+- **Hangar repair** (Protectorate): at the end of the round, each squadron **docked** in a living
+  carrier restores 1 hull (not above max).
+
+### Launch and order details (decided)
+- **Launching:** a squadron launched in Plan Movement appears next to its carrier after the ships
+  move, then flies its order in the same round. A carrier can launch any number at once. On the phone,
+  picking Escort / Attack / Intercept for a docked squadron launches it (Escort is the default pick).
+- **Returning:** a Return squadron flies to its carrier and docks if it ends touching it (within
+  0.25 u). It can launch again in a later round. If the carrier is gone, it holds its position.
+- **Timeouts:** each squadron keeps its last order; docked squadrons stay docked.
+- **Comms Down:** none of that carrier's squadrons take new orders (no launching or returning) until
+  it's repaired.
+- If the carrier is destroyed during the Move, squadrons it was about to launch are lost with it.
 
 ### Squadron details (decided)
 - **Ship weapons vs squadrons:** Autocannons and point-defense use their normal hit chance, Flechettes
   their 70%. Every other weapon gets **−20 points** (Railgun 60% → 40%), never below 10%. **Ion
   Cannons and Boarding Harpoons can't target squadrons.** Acid, Grapple and Disruptor only do their
   damage to a squadron (no extra effect). Squadron hits never crit.
-- **Wing orders:** every wing starts on **Escort**. A timeout keeps the last order.
 - **Point-defense** always fires on its own; stances (Brace, Overcharge, Full Burn, Hunter, Damage
   Control) and Weapons Offline don't change it.
 - **Squadron attacks:** close range (3 u) only. Fighters shoot the nearest enemy squadron, else the
@@ -365,16 +379,16 @@ PD shots go at the nearest one**.
 - **Movement:** Escort = each squadron flies to its own spot about 0.6 u from the carrier's hull
   (stays put if the carrier is gone). Attack = fly until touching the target ship. Intercept = fly at
   the nearest enemy squadron (where it was before squadrons moved) and stop when touching it.
-  Squadrons of one wing aim a little apart so they don't stack.
+  Squadrons from the same carrier aim a little apart so they don't stack.
 - **Asteroids** never block shots by squadrons or at squadrons.
 - **Boarding Pods:** "touching" = within 0.25 u of the ship's outline at the end of the move. A pod
   shot down in the Fire phase doesn't latch. A pod that latches is removed; nobody gets a kill point.
 - **Buying:** a carrier holds any mix of its faction's squadrons; they cost points from the player's
   share; removing a carrier removes its squadrons.
 - **Comms Down** is only rolled on a carrier that still has living squadrons.
-- **Hangar repair:** Protectorate carriers only; the carrier must be alive.
-- **TV:** the top bar's fleet value counts each living squadron as 1. Kill points are tracked (shown
-  from step 7). A squadron is a small circle in its player's color with F / B / P and hull pips.
+- **TV:** the top bar's fleet value counts each living squadron (docked or not) as 1. Kill points are
+  tracked (shown from step 7). A launched squadron is a small circle in its player's color with
+  F / B / P and hull pips; a carrier's label shows how many squadrons are docked (✈2).
 - End of round order: Damage Control, Hangar repair, Bridge Fire, Acid, Boarding Pod latches.
 
 ---
@@ -559,9 +573,9 @@ squadrons.
   descriptions; points left; buy / remove buttons; Ready.
 - **My Fleet:** a list of your ships. Tap one to see hull, shields for each zone, speed and speed
   range, current stance and the blocked stance, criticals, weapons per arc (with descriptions), and
-  its squadron wing's order.
+  its squadrons and their orders.
 - **Plan Stance + Movement:** for each ship, a big-button stance grid, then speed **−/+** and turn
-  clicks for each segment. A **mini-map** with a ghost of the planned path. Carriers: wing order.
+  clicks for each segment. A **mini-map** with a ghost of the planned path. Carriers: an order for each squadron (launch, return).
 - **Plan Fire:** for each ship, its arcs; in a fired arc, each weapon picks its own target from the
   valid targets (range band and expected damage shown). Once-per-game weapons show "Hold / Fire".
 - **Ready** button, the timer, and the **Surrender** button at the bottom.

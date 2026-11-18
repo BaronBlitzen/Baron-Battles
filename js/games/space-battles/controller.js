@@ -4,7 +4,7 @@
 import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, CLASSES, WEAPONS, ZONES, ARCS, ZONE_NAMES, RANGE_BANDS, SHIPS, FLEET,
-  STANCES, CLASS_STANCES, CRITICALS, SQUADRONS, SQUADRON_ROLES, SQUADRON, WING_ORDERS, WING_ORDER_LIST,
+  STANCES, CLASS_STANCES, CRITICALS, SQUADRONS, SQUADRON_ROLES, SQUADRON, SQUAD_ORDERS, SQUAD_ORDER_LIST,
 } from './data.js';
 import {
   classOf, shipDef, corners, speedOptions, maxClicks, defaultMovePlan, planWaypoints,
@@ -59,7 +59,7 @@ export function mount({ container, me, sendInput }) {
     repairDraft = {};
     for (const s of myLiving()) {
       moveDraft[s.id] = defaultMovePlan(s);
-      if (hasWing(s) && s.wing) moveDraft[s.id].wing = { ...s.wing };
+      if (hasWing(s)) moveDraft[s.id].squads = Object.fromEntries(wingSquads(s.id).filter((q) => q.alive).map((q) => [q.id, { ...q.order }]));
       fireDraft[s.id] = Object.fromEntries(defaultFirePlan(s, units(), state.asteroids).map((a) => [a.arc, { ...a.targets }]));
     }
     const living = myLiving();
@@ -104,12 +104,12 @@ export function mount({ container, me, sendInput }) {
     for (const [r, n] of Object.entries(s.acidDue || {})) {
       out.push(`🧪 Acid: ${n} hull damage at the end of ${Number(r) === state.round ? 'this' : 'next'} round`);
     }
-    const wing = wingSquads(s.id);
-    if (wing.length) {
-      const wo = WING_ORDERS[s.wing?.order || 'escort'];
-      const wt = s.wing?.target && shipById(s.wing.target);
-      out.push(`${wo.icon} Wing: ${escapeHtml(wo.name)}${wt ? ` → ${escapeHtml(shipDef(wt).short)}` : ''}`);
-      out.push(`✈ ${wing.map((q) => `${escapeHtml(squadDef(q).short)} ${q.alive ? `${q.hull}/${squadDef(q).hull}` : '✖'}`).join(' · ')}`);
+    // Its squadrons: hull, docked or the order they're flying.
+    for (const q of wingSquads(s.id)) {
+      if (!q.alive) { out.push(`✈ ${escapeHtml(squadLabel(q))}: destroyed`); continue; }
+      const o = SQUAD_ORDERS[q.order.order];
+      const ot = q.order.target && shipById(q.order.target);
+      out.push(`✈ ${escapeHtml(squadLabel(q))} ${q.hull}/${squadDef(q).hull}: ${q.docked ? '🏠 docked' : `${o.icon} ${escapeHtml(o.name)}${ot ? ` → ${escapeHtml(shipDef(ot).short)}` : ''}`}`);
     }
     for (const arc of ARCS) {
       arcWeapons(s, arc).forEach((w, wi) => {
@@ -159,7 +159,7 @@ export function mount({ container, me, sendInput }) {
       <p class="sbp-notice">${escapeHtml(notice)}</p>
       <button class="big-btn sbp-ready" data-act="send">${label}</button>
       <p class="sbp-keys muted">${state.phase === 'planMove'
-        ? 'Keys: Z/C stance · O wing order · ↑↓ speed · ←→ turn · Q/E segment · N next ship · Enter send'
+        ? 'Keys: Z/C stance · L launch all · ↑↓ speed · ←→ turn · Q/E segment · N next ship · Enter send'
         : 'Keys: ↑↓ choose · Space pick · N next ship · Enter send'}</p>`;
   }
 
@@ -334,45 +334,71 @@ export function mount({ container, me, sendInput }) {
         </div>` : ''}`;
   }
 
-  // Carrier wing order (rules §8): one order for all of this carrier's squadrons.
-  function wingPicker(s, d) {
+  // A squadron's name in its carrier ("Hawk 2" when there are two Hawks).
+  function squadLabel(q) {
+    const same = wingSquads(q.carrier).filter((o) => o.type === q.type);
+    return `${squadDef(q).short}${same.length > 1 ? ` ${same.indexOf(q) + 1}` : ''}`;
+  }
+
+  // Orders this squadron may get now (Stay docked only while docked, Return only once launched).
+  const ordersFor = (q) => SQUAD_ORDER_LIST.filter((id) => (q.docked ? !SQUAD_ORDERS[id].launchedOnly : !SQUAD_ORDERS[id].dockedOnly));
+
+  // Carrier squadrons (rules §8): one order per squadron. A docked squadron given Escort,
+  // Attack or Intercept launches this round.
+  function squadPicker(s, d) {
     if (!hasWing(s)) return '';
-    const cur = d.wing || s.wing || { order: 'escort' };
-    const list = wingSquads(s.id).filter((q) => q.alive).map((q) => `${squadDef(q).short} ${q.hull}/${squadDef(q).hull}`).join(' · ');
+    const living = wingSquads(s.id).filter((q) => q.alive);
     if (critCount(s, 'comms')) {
       return `
-        <h3 class="sbp-h">Wing <small class="muted">${escapeHtml(list)}</small></h3>
-        <p class="sbp-burn">📡 Comms Down: the wing keeps its order (${escapeHtml(WING_ORDERS[cur.order].name)}) until repaired.</p>`;
+        <h3 class="sbp-h">Squadrons</h3>
+        <p class="sbp-burn">📡 Comms Down: squadrons keep their orders (docked ones stay docked) until repaired.</p>
+        ${living.map((q) => `<p class="sbp-small">${escapeHtml(squadLabel(q))}: ${SQUAD_ORDERS[q.order.order].icon} ${escapeHtml(SQUAD_ORDERS[q.order.order].name)}</p>`).join('')}`;
     }
     const enemies = state.ships.filter((t) => t.alive && t.faction !== s.faction)
       .map((t) => ({ t, dist: Math.hypot(t.x - s.x, t.y - s.y) })).sort((a, b) => a.dist - b.dist);
     return `
-      <h3 class="sbp-h">Wing order <small class="muted">${escapeHtml(list)}</small></h3>
-      <div class="sbp-repair">${WING_ORDER_LIST.map((id) => `
-        <button data-act="wingOrder" data-o="${id}" class="${cur.order === id ? 'on' : ''}">${WING_ORDERS[id].icon} ${escapeHtml(WING_ORDERS[id].name)}</button>`).join('')}
-      </div>
-      <p class="sbp-small sbp-st-desc">${escapeHtml(WING_ORDERS[cur.order].desc)}</p>
-      ${WING_ORDERS[cur.order].needsTarget ? `
-        <div class="sbp-hunt">${enemies.map(({ t, dist }) => `
-          <button class="sbp-target ${cur.target === t.id ? 'on' : ''}" data-act="wingTarget" data-id="${t.id}">
-            <span><span class="dot" style="background:${person(t.owner).color}"></span>${escapeHtml(shipDef(t).short)} <small>${escapeHtml(person(t.owner).name)}</small></span>
-            <span>${dist.toFixed(1)} u away ${cur.target === t.id ? '⚔' : ''}</span></button>`).join('')}
-        </div>` : ''}`;
+      <h3 class="sbp-h">Squadrons <small class="muted">each gets its own order</small></h3>
+      ${living.map((q) => {
+        const cur = d.squads?.[q.id] || q.order;
+        const launching = q.docked && SQUAD_ORDERS[cur.order].launches;
+        const sd = squadDef(q);
+        return `
+          <div class="sbp-arc ${launching ? 'on' : ''}">
+            <div class="sbp-arc-head"><b>${escapeHtml(squadLabel(q))} <small>${SQUADRON_ROLES[sd.role].name} · hull ${q.hull}/${sd.hull}</small></b>
+              <small>${q.docked ? (launching ? '🚀 Launching' : '🏠 Docked') : 'In space'}</small></div>
+            <div class="sbp-sqorders">${ordersFor(q).map((id) => `
+              <button data-act="squadOrder" data-q="${q.id}" data-o="${id}" class="${cur.order === id ? 'on' : ''}">${SQUAD_ORDERS[id].icon} ${escapeHtml(SQUAD_ORDERS[id].name)}</button>`).join('')}
+            </div>
+            ${SQUAD_ORDERS[cur.order].needsTarget ? `
+              <div class="sbp-hunt">${enemies.map(({ t, dist }) => `
+                <button class="sbp-target ${cur.target === t.id ? 'on' : ''}" data-act="squadTarget" data-q="${q.id}" data-id="${t.id}">
+                  <span><span class="dot" style="background:${person(t.owner).color}"></span>${escapeHtml(shipDef(t).short)} <small>${escapeHtml(person(t.owner).name)}</small></span>
+                  <span>${dist.toFixed(1)} u ${cur.target === t.id ? '⚔' : ''}</span></button>`).join('')}
+              </div>` : ''}
+          </div>`;
+      }).join('')}
+      <p class="sbp-small muted">${q0Hint(living)}</p>`;
   }
 
-  function setWing(order, target) {
+  const q0Hint = (living) => (living.some((q) => q.docked)
+    ? 'Pick Escort, Attack or Intercept to launch a docked squadron. It appears behind the carrier after the ships move.'
+    : 'Return flies a squadron back to dock in the carrier.');
+
+  function setSquadOrder(qid, order, target) {
     const s = shipById(selShip);
     const d = moveDraft[s.id];
-    const cur = d.wing || s.wing || { order: 'escort' };
-    const w = { order };
-    if (WING_ORDERS[order].needsTarget) {
+    const q = squads().find((x) => x.id === qid && x.carrier === s.id && x.alive);
+    if (!q || !ordersFor(q).includes(order)) return;
+    const cur = d.squads?.[qid] || q.order;
+    const o = { order };
+    if (SQUAD_ORDERS[order].needsTarget) {
       const near = state.ships.filter((t) => t.alive && t.faction !== s.faction)
         .sort((a, b) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(b.x - s.x, b.y - s.y))[0];
       const keep = state.ships.find((t) => t.id === (target || cur.target) && t.alive && t.faction !== s.faction);
-      w.target = keep?.id || near?.id;
-      if (!w.target) return;
+      o.target = keep?.id || near?.id;
+      if (!o.target) return;
     }
-    d.wing = w;
+    (d.squads || (d.squads = {}))[qid] = o;
     render();
   }
 
@@ -387,7 +413,7 @@ export function mount({ container, me, sendInput }) {
         ${shipTabs()}
         <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}</b> <small class="muted">Hull ${s.hull} · ${shieldText(s.shields)}</small></div>
         ${stancePicker(s, d)}
-        ${wingPicker(s, d)}
+        ${squadPicker(s, d)}
         <canvas class="sbp-map"></canvas>
         ${s.burn ? '<p class="sbp-burn">🚀 Every ship is home: free Full Burn this round. Change speed by up to 2, up to 1 over max.</p>' : ''}
         ${s.disrupted ? '<p class="sbp-burn">⚡ Disrupted: 1 turn click less per segment this round.</p>' : ''}
@@ -657,7 +683,7 @@ export function mount({ container, me, sendInput }) {
     }
     // Squadrons: small circles with their role letter.
     for (const q of squads()) {
-      if (!q.alive) continue;
+      if (!q.alive || q.docked) continue; // docked squadrons are inside their carrier
       const c = person(q.owner).color;
       const r = Math.max(4, (SQUADRON.size / 2) * k);
       ctx.fillStyle = `${c}55`;
@@ -854,8 +880,8 @@ export function mount({ container, me, sendInput }) {
     else if (act === 'remove') sendInput({ type: 'remove', index: Number(b.dataset.i) });
     else if (act === 'buySquad') { sendInput({ type: 'buySquad', index: Number(b.dataset.i), squadType: b.dataset.t }); buzz(15); }
     else if (act === 'removeSquad') sendInput({ type: 'removeSquad', index: Number(b.dataset.i), slot: Number(b.dataset.k) });
-    else if (act === 'wingOrder') setWing(b.dataset.o);
-    else if (act === 'wingTarget') setWing('attack', b.dataset.id);
+    else if (act === 'squadOrder') setSquadOrder(b.dataset.q, b.dataset.o);
+    else if (act === 'squadTarget') setSquadOrder(b.dataset.q, 'attack', b.dataset.id);
     else if (act === 'details') { openShip = openShip === b.dataset.t ? null : b.dataset.t; render(); }
     else if (act === 'surrenderAsk') { confirmSurrender = true; render(); }
     else if (act === 'surrenderNo') { confirmSurrender = false; render(); }
@@ -915,9 +941,10 @@ export function mount({ container, me, sendInput }) {
       else if (k === 'ArrowRight' || k === 'd') turn(selSeg, 1);
       else if (k === 'q') { selSeg = Math.max(0, selSeg - 1); render(); }
       else if (k === 'e') { selSeg = Math.min(d.clicks.length - 1, selSeg + 1); render(); }
-      else if (k === 'o' && hasWing(shipById(selShip)) && !critCount(shipById(selShip), 'comms')) {
-        const cur = (d.wing || shipById(selShip).wing || { order: 'escort' }).order;
-        setWing(WING_ORDER_LIST[(WING_ORDER_LIST.indexOf(cur) + 1) % WING_ORDER_LIST.length]);
+      else if (k === 'l' && hasWing(shipById(selShip)) && !critCount(shipById(selShip), 'comms')) {
+        // Launch every docked squadron on Escort.
+        for (const q of wingSquads(selShip)) if (q.alive && q.docked) (d.squads || (d.squads = {}))[q.id] = { order: 'escort' };
+        render();
       }
       else if (k === 'z') cycleStance(-1);
       else if (k === 'c') cycleStance(1);

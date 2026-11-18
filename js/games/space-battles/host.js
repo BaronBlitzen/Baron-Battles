@@ -4,7 +4,7 @@
 import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, WEAPONS, SHIPS, SCENARIOS, TIMING, ZONES, MISSIONS, FLEET, STANCES,
-  CRITICALS, CRIT_POOL, ARCS, SQUADRONS, SQUADRON_ROLES, WING_ORDERS,
+  CRITICALS, CRIT_POOL, ARCS, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS,
 } from './data.js';
 import {
   classOf, shipDef, simulateMove, sanitizeMovePlan, defaultMovePlan, sanitizeFirePlan,
@@ -13,6 +13,7 @@ import {
   applyHullDamage, pullToward, arcShots, stanceDamage, sanitizeRepair, applyRepair, shieldsOff,
   hullHitCount, absorbableShields, maxSpeed, critCount, isSquad, squadDef, SQUAD_R, unitDistance,
   hitChance, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTarget, latchTarget,
+  launchSpot, canDock,
   squadBuyProblem, killValue,
 } from './rules.js';
 
@@ -30,12 +31,13 @@ const ACID_MS = 2900; // when end-of-round acid burns (after the fire damage)
 const clone = (s) => ({
   ...s, shields: { ...s.shields }, used: { ...(s.used || {}) }, acidDue: { ...(s.acidDue || {}) },
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
-  ...(s.wing ? { wing: { ...s.wing } } : {}),
 });
-const cloneSquad = (q) => ({ ...q });
+const cloneSquad = (q) => ({ ...q, order: { ...q.order } });
+// A squadron's order is shown to everyone (it's revealed by the move); docked squadrons sit at
+// their carrier's position.
 const publicSquad = (q) => ({
   id: q.id, kind: 'squad', type: q.type, faction: q.faction, owner: q.owner, carrier: q.carrier,
-  slot: q.slot, x: q.x, y: q.y, hull: q.hull, alive: q.alive,
+  slot: q.slot, x: q.x, y: q.y, hull: q.hull, alive: q.alive, docked: !!q.docked, order: { ...q.order },
 });
 const publicShip = (s) => ({
   id: s.id, type: s.type, faction: s.faction, owner: s.owner, x: s.x, y: s.y,
@@ -45,31 +47,24 @@ const publicShip = (s) => ({
   // Stance: null while it's still secret (Plan Movement); lastStance can't be picked again.
   stance: s.stance ? { ...s.stance } : null, lastStance: s.lastStance || 'balanced',
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
-  wing: s.wing ? { ...s.wing } : null,
 });
 
-// Position and heading are set by deploy(). Carriers get a wing order (every wing starts on Escort).
+// Position and heading are set by deploy().
 function makeShip(id, type, owner) {
   const def = SHIPS[type];
   return {
     id, type, faction: def.faction, owner, x: 0, y: 0, heading: 0,
     speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true,
-    ...(def.squadrons ? { wing: { order: 'escort' } } : {}),
   };
 }
 
-// Squadrons start next to their carrier: in a short row just behind it.
-function makeSquads(carrier, types, nextId, map) {
-  const L = classOf(carrier).length / 2 + 0.5;
-  const c = Math.cos((carrier.heading * Math.PI) / 180), s = Math.sin((carrier.heading * Math.PI) / 180);
+// Squadrons start the battle docked inside their carrier (rules §8).
+function makeSquads(carrier, types, nextId) {
   return types.map((type, slot) => {
-    const lx = -L, ly = (slot - 1) * 0.6;
     const def = SQUADRONS[type];
     return {
       id: nextId(), kind: 'squad', type, faction: def.faction, owner: carrier.owner, carrier: carrier.id, slot,
-      x: Math.max(SQUAD_R, Math.min(map.w - SQUAD_R, carrier.x + lx * c - ly * s)),
-      y: Math.max(SQUAD_R, Math.min(map.h - SQUAD_R, carrier.y + lx * s + ly * c)),
-      hull: def.hull, alive: true,
+      x: carrier.x, y: carrier.y, hull: def.hull, alive: true, docked: true, order: { order: 'docked' },
     };
   });
 }
@@ -384,7 +379,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     deploy(ships, battleFactions, scenario); // players in join order, each player's ships together
     squads = [];
     let qn = 0;
-    for (const [s, types] of wings) squads.push(...makeSquads(s, types, () => `q${++qn}`, map));
+    for (const [s, types] of wings) squads.push(...makeSquads(s, types, () => `q${++qn}`));
     kills = Object.fromEntries(battleFactions.map((f) => [f, 0]));
     ready = {};
     phase = 'intro';
@@ -453,7 +448,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     for (const s of mine) {
       const p = msg.ships?.[s.id];
       plans[s.id] = kind === 'planMove'
-        ? sanitizeMovePlan(s, p, ships) || defaultMovePlan(s)
+        ? sanitizeMovePlan(s, p, ships, squads) || defaultMovePlan(s)
         : sanitizeFirePlan(s, p, units(), asteroids);
     }
     store[id] = plans;
@@ -490,8 +485,11 @@ export function start({ container, players, setPhoneState, onExit }) {
       s.stance = plans[s.id].stance;
       const charge = STANCES[s.stance.id].chargeShields;
       s.tempShields = charge ? { [s.stance.zone]: charge } : {};
-      // New wing order (kept as it was on a timeout, or while Comms Down is acting).
-      if (plans[s.id].wing && isCarrier(s) && !critCount(s, 'comms')) s.wing = { ...plans[s.id].wing };
+    }
+    // New squadron orders, one per squadron (kept on a timeout, or while Comms Down is acting).
+    const newOrders = {};
+    for (const s of ships) {
+      if (s.alive && plans[s.id].squads && isCarrier(s) && !critCount(s, 'comms')) Object.assign(newOrders, plans[s.id].squads);
     }
     const res = simulateMove(ships, plans, scenario);
     const t0 = now();
@@ -503,14 +501,36 @@ export function start({ container, players, setPhoneState, onExit }) {
     // Burn, Disruptor and Grapple effects only last for this one move.
     for (const s of ships) { s.burn = false; s.disrupted = false; s.grappled = false; }
     checkHome(ships);
-    // Squadrons move after ships (rules §6), then Boarding Pods check whether they latched on.
+    // Squadrons (rules §8): new orders apply, docked squadrons with a launch order appear next to
+    // their carrier, and squadrons docked in a carrier destroyed during the Move are lost with it.
+    squads = squads.map(cloneSquad);
+    const launched = new Set();
+    for (const q of squads) {
+      if (!q.alive) continue;
+      if (newOrders[q.id]) q.order = { ...newOrders[q.id] };
+      if (!q.docked) continue;
+      const c = shipById(q.carrier);
+      if (!c?.alive) { q.alive = false; credit(q); continue; }
+      if (SQUAD_ORDERS[q.order.order].launches) {
+        Object.assign(q, launchSpot(c, q.slot, map));
+        q.docked = false;
+        launched.add(q.id);
+      } else { q.x = c.x; q.y = c.y; }
+    }
+    // Then they move after the ships (rules §6). Return squadrons that reach their carrier dock,
+    // and Boarding Pods check whether they latched on.
     const squadPaths = planSquadMoves(squads, ships, map);
-    squads = squads.map((q) => {
+    const docking = new Set();
+    for (const q of squads) {
       const p = squadPaths[q.id];
-      const out = p ? { ...q, x: p.to.x, y: p.to.y } : { ...q };
-      out.latched = out.alive ? latchTarget(out, ships)?.id || null : null;
-      return out;
-    });
+      if (p) { q.x = p.to.x; q.y = p.to.y; }
+      if (q.alive && !q.docked && q.order.order === 'return' && canDock(q, ships)) {
+        q.docked = true;
+        q.order = { order: 'docked' };
+        docking.add(q.id);
+      }
+      q.latched = latchTarget(q, ships)?.id || null;
+    }
     const squadMs = Object.keys(squadPaths).length ? TIMING.squadMoveMs : 0;
     const pending = [];
     const fx = [];
@@ -521,6 +541,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     }
     anim = {
       kind: 'move', start: t0, end: t0 + TIMING.moveMs + squadMs + 900, frames: res.frames, pending, fx, squadPaths,
+      launched, docking,
       dying: new Set(ships.filter((s) => !s.alive && before.has(s.id)).map((s) => s.id)),
       dieAt: t0 + TIMING.moveMs + 100,
     };
@@ -706,19 +727,20 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (r.critRemoved) parts.push(`fixed ${CRITICALS[r.critRemoved].name}`);
       tag(s.id, `🔧 ${parts.length ? parts.join(', ') : 'Nothing to repair'}`, '#8ce99a', acidAt);
     }
-    // Hangar repair (Protectorate): squadrons within close range of their own living carrier.
+    // Hangar repair (Protectorate): squadrons docked in a living carrier. The label goes on the
+    // carrier, since docked squadrons aren't drawn.
+    const repaired = {};
     for (const q of nextSquads) {
       const hr = FACTIONS[q.faction].traits.hangarRepair;
       const c = nextById[q.carrier];
-      if (!hr || !q.alive || q.hull <= 0 || !c?.alive || c.hull <= 0) continue;
-      if (rangeBand(unitDistance(q, c)) !== 'close') continue;
+      if (!hr || !q.alive || !q.docked || q.hull <= 0 || !c?.alive || c.hull <= 0) continue;
       const h = Math.min(hr, squadDef(q).hull - q.hull);
       if (h <= 0) continue;
       q.hull += h;
       endOfRound = true;
-      pending.push({ at: acidAt, shipId: q.id, zone: null, shieldLost: 0, hullLost: -h });
-      tag(q.id, `+${h} hangar`, '#8ce99a', acidAt);
+      repaired[c.id] = (repaired[c.id] || 0) + h;
     }
+    for (const [id, h] of Object.entries(repaired)) tag(id, `✈ +${h} hangar repair`, '#8ce99a', acidAt);
     // Bridge Fire: 1 hull per fire (caught before this round), ignoring shields; Brace halves it.
     for (const s of next) {
       const fires = critCount(s, 'bridgeFire');
@@ -757,6 +779,16 @@ export function start({ container, players, setPhoneState, onExit }) {
 
     const dying = new Set();
     for (const u of [...next, ...nextSquads]) if (u.alive && u.hull <= 0) { u.alive = false; dying.add(u.id); credit(u); }
+    // Squadrons still docked in a carrier destroyed this round are lost with it.
+    for (const q of nextSquads) {
+      if (!q.alive || !q.docked || !dying.has(q.carrier)) continue;
+      q.alive = false;
+      credit(q);
+    }
+    for (const c of next) {
+      const lost = nextSquads.filter((q) => q.docked && q.carrier === c.id && !q.alive && squads.find((o) => o.id === q.id)?.alive).length;
+      if (lost) tag(c.id, `✈ ${lost} docked squadron${lost > 1 ? 's' : ''} lost`, '#ff8787', (acidKill ? acidAt : landAt) + 700);
+    }
     phoneShips = ships.map(clone);
     phoneSquads = squads.map(cloneSquad);
     ships = next;
@@ -1020,7 +1052,10 @@ export function start({ container, players, setPhoneState, onExit }) {
     ctx.fillStyle = frac > 0.5 ? '#51cf66' : frac > 0.25 ? '#fcc419' : '#ff6b6b';
     ctx.fillRect(cx - barW / 2, by, barW * frac, 5);
     const burnTag = phase === 'planMove' ? `${s.burn ? ' 🚀' : ''}${s.disrupted ? ' ⚡' : ''}${s.grappled ? ' ⚓' : ''}` : '';
-    label(`${s.owner ? `${def.short} · ${nameOf(s.owner)}` : def.short}${burnTag}`, cx, cy - R - 10, color, Math.max(11, S * 0.42));
+    // Squadrons docked inside (✈2). While ships are still moving, the count from before the launch.
+    const sqList = anim?.kind === 'move' && t < anim.start + TIMING.moveMs && phoneSquads ? phoneSquads : squads;
+    const docked = isCarrier(s) ? sqList.filter((q) => q.alive && q.docked && q.carrier === s.id).length : 0;
+    label(`${s.owner ? `${def.short} · ${nameOf(s.owner)}` : def.short}${docked ? ` ✈${docked}` : ''}${burnTag}`, cx, cy - R - 10, color, Math.max(11, S * 0.42));
     // Critical icons under the hull bar.
     if (s.crits?.length && s.alive) {
       ctx.font = `700 ${Math.max(11, S * 0.42)}px system-ui, sans-serif`;
@@ -1034,11 +1069,6 @@ export function start({ container, players, setPhoneState, onExit }) {
       const st = STANCES[s.stance.id];
       const hunted = s.stance.target ? ships.find((x) => x.id === s.stance.target) : null;
       let text = `${st.icon} ${st.name}${s.stance.zone ? ` (${s.stance.zone})` : ''}${hunted ? ` → ${SHIPS[hunted.type].short}` : ''}`;
-      if (s.wing && wingOf(s.id, squads).length) {
-        const wo = WING_ORDERS[s.wing.order];
-        const wt = s.wing.target && shipById(s.wing.target);
-        text += ` · Wing ${wo.icon}${wt ? ` ${SHIPS[wt.type].short}` : ''}`;
-      }
       label(text, cx, cy - R - 10 - Math.max(12, S * 0.5), s.stance.id === 'balanced' ? 'rgba(220,220,240,.6)' : '#ffd43b', Math.max(10, S * 0.38));
     }
     ctx.restore();
@@ -1054,6 +1084,11 @@ export function start({ container, players, setPhoneState, onExit }) {
     let alpha = 1;
     if (!q.alive && anim?.dying.has(q.id) && t > anim.dieAt) alpha = Math.max(0, 1 - (t - anim.dieAt) / 600);
     if (!q.alive && anim?.boarded?.has(q.id) && t > anim.boardAt) alpha = Math.max(0, 1 - (t - anim.boardAt) / 500);
+    if (anim?.kind === 'move') {
+      const sqStart = anim.start + TIMING.moveMs, sqEnd = sqStart + TIMING.squadMoveMs;
+      if (anim.launched?.has(q.id) && t < sqStart) return; // still inside the carrier
+      if (anim.docking?.has(q.id) && t > sqEnd) alpha = Math.max(0, 1 - (t - sqEnd) / 400); // docking
+    }
     if (alpha <= 0) return;
     const R = Math.max(7, SQUAD_R * S);
     const cx = p.x * S, cy = p.y * S;
@@ -1151,7 +1186,10 @@ export function start({ container, players, setPhoneState, onExit }) {
     const visible = ships.filter((s) => s.alive || anim?.dying.has(s.id));
     if (phase !== 'setup') for (const s of visible) drawShip(s, t);
     if (phase !== 'setup') {
-      for (const q of squads) if (q.alive || anim?.dying.has(q.id) || anim?.boarded?.has(q.id)) drawSquad(q, t);
+      for (const q of squads) {
+        if (q.docked && !anim?.docking?.has(q.id)) continue; // docked squadrons are inside their carrier
+        if (q.alive || anim?.dying.has(q.id) || anim?.boarded?.has(q.id)) drawSquad(q, t);
+      }
     }
     // (During setup the ships aren't drawn yet: deployment edges depend on the chosen factions.)
 

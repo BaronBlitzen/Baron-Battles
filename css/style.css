@@ -309,3 +309,7 @@ body.phone #app { min-height: 100dvh; display: flex; }
 .sbp-claims li .sbp-wingchips, .sbp-claims li .sbp-wingbuy { display: flex; flex-wrap: wrap; gap: 6px; }
 .sbp-claims .sbp-wingbuy button, .sbp-claims .sbp-wingchips button { padding: 6px 10px; display: grid; gap: 0; text-align: center; }
 .sbp-claims .sbp-wingbuy button:disabled { opacity: .35; cursor: not-allowed; }
+
+.sbp-sqorders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sbp-sqorders button { border: 2px solid var(--line); background: var(--bg2); color: var(--text); border-radius: 10px; padding: 8px 2px; font-weight: 700; font-size: .85em; cursor: pointer; }
+.sbp-sqorders button.on { border-color: var(--accent); background: rgba(255,183,3,.15); }
