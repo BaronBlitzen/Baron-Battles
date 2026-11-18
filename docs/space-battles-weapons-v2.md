@@ -218,6 +218,23 @@ Gnasher, Ripper, Broodmaw, Dreadhulk, Corsair, Marauder, Freehold).
 | Outrider | Destroyer | 3/3/3/3 | 14 | 8 | 2/1/1/2 | 1–4 | 2 | 3 | Autocannon Turret (2), Breaching Cannon (2), Disruptor (1) | Flechette 1×1 | **Mine Drop** |
 | Free Trader | Destroyer | 2/3/3/3 | 13 | 9 | 2/1/1/1 | 1–3 ✅ | 3 at speed 1–2, 1 at speed 3 ✅ | 3 | Autocannon Turret (2), Autocannon Turret (2), Disruptor (1) | Flechette 1×4 | **Smuggler's Hold** |
 
+### Turning by speed ✅
+
+Ships turn tighter when they slow down. This replaces the **Clicks** column in the tables above.
+Every ship that can fly at speed 1 gets 2 clicks there (the Free Trader 3). Firefly and Torpedo
+Boat stay nimble at every speed. Numbers are turn clicks per segment (1 click = 15°). Above max
+speed (after a Full Burn) a ship uses its top-speed number. Stances still apply on top (Evasive
++1, Trained Helms +1, Brace max 1).
+
+| Ship | Speed 1 | Speed 2 | Speed 3 | Speed 4 | Speed 5 |
+|---|---|---|---|---|---|
+| Queen | 2 | 1 | | | |
+| Brute, Grunt | 2 | 1 | 1 | | |
+| Strike Carrier, Lancer, Outrider | 2 | 2 | 1 | 1 | |
+| Free Trader | 3 | 3 | 1 | | |
+| Escort, Samurai, Rouge | | 3 | 2 | 1 | |
+| Firefly, Torpedo Boat | | 3 | 3 | 3 | 2 |
+
 ### Special abilities
 
 - **Carrier (N):** carries N squadrons (as now).

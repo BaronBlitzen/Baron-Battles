@@ -163,7 +163,8 @@ const pd = (weapon, shots) => ({ weapon, shots });
 
 // Ship types (weapons v2). `weapons` lists the ship's weapons in card order; `power` is how much
 // power it has to fire them each round. `speed` is [min, max]; `clicks` is the max turn clicks per
-// segment (1 click = 15°). Optional: `clicksAtSpeed` (e.g. { 3: 1 }), `pd` (point-defense),
+// segment (1 click = 15°): `clicksAtSpeed` gives the clicks at each speed (slower = tighter turns) and
+// `clicks` is used at any other speed (e.g. above max after a Full Burn). Optional: `pd` (point-defense),
 // `squadrons` (carrier slots) and `carries` (squadron types it may hold), `special` (SPECIALS),
 // `ramDamage`. `ratings` = the designer's 1–5 Offense / Defense / Mobility / Utility.
 export const SHIPS = {
@@ -172,28 +173,28 @@ export const SHIPS = {
     name: 'Strike Carrier', short: 'Carrier', faction: 'protectorate', class: 'cruiser', cost: 22,
     ratings: { o: 4, d: 4, m: 3, u: 5 },
     desc: 'The fleet\'s centerpiece. Launches 3 squadrons and backs them up with long-range railguns.',
-    hull: 10, shields: { front: 3, left: 3, right: 3, rear: 2 }, speed: [1, 4], clicks: 2, power: 4,
+    hull: 10, shields: { front: 3, left: 3, right: 3, rear: 2 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 4,
     weapons: ['heavyRail', 'railBattery', 'ion'], pd: [pd('flak', 2)], squadrons: 3,
   },
   lancer: {
     name: 'Lancer', short: 'Lancer', faction: 'protectorate', class: 'cruiser', cost: 17,
     ratings: { o: 5, d: 3, m: 3 },
     desc: 'The hardest hitter in the fleet. Its spinal Particle Lance fires straight ahead at long range.',
-    hull: 9, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 2, power: 6,
+    hull: 9, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
     weapons: ['lance', 'heavyRail', 'railBattery'], pd: [pd('flak', 1)],
   },
   escort: {
     name: 'Escort', short: 'Escort', faction: 'protectorate', class: 'destroyer', cost: 11,
     ratings: { o: 2, d: 3, m: 4 },
     desc: 'A quick all-rounder with the heaviest flak in the fleet.',
-    hull: 7, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [2, 4], clicks: 3, power: 3,
+    hull: 7, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [2, 4], clicks: 1, clicksAtSpeed: { 2: 3, 3: 2 }, power: 3,
     weapons: ['railBattery', 'railBattery', 'ion'], pd: [pd('flak', 3)],
   },
   torpedoBoat: {
     name: 'Torpedo Boat', short: 'Torpedo Boat', faction: 'protectorate', class: 'corvette', cost: 9,
     ratings: { o: 3, d: 1, m: 5 },
     desc: 'Very fast and very fragile. Lines up its torpedo tubes for hit-and-run strikes.',
-    hull: 4, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 3, power: 2,
+    hull: 4, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3, 4: 3 }, power: 2,
     weapons: ['torpedo', 'railBattery'],
   },
 
@@ -202,28 +203,28 @@ export const SHIPS = {
     name: 'Queen', short: 'Queen', faction: 'djnzuar', class: 'battleship', cost: 22,
     ratings: { o: 1, d: 5, m: 1, u: 5 },
     desc: 'A huge, slow mother ship. Barely armed, but its brood of 4 squadrons does the fighting.',
-    hull: 20, shields: { front: 4, left: 3, right: 3, rear: 2 }, speed: [1, 2], clicks: 1, power: 2,
+    hull: 20, shields: { front: 4, left: 3, right: 3, rear: 2 }, speed: [1, 2], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
     weapons: ['spine', 'spine', 'acid'], pd: [pd('thorn', 3)], squadrons: 4, carries: ['swarmers', 'latchers'],
   },
   brute: {
     name: 'Brute', short: 'Brute', faction: 'djnzuar', class: 'cruiser', cost: 16,
     ratings: { o: 4, d: 4, m: 2 },
     desc: 'A slow, armored bruiser. Harpoons enemies close, then unloads its plasma.',
-    hull: 13, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 3], clicks: 1, power: 5,
+    hull: 13, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 5,
     weapons: ['heavyPlasma', 'plasma', 'grapple', 'spine'], pd: [pd('thorn', 1)],
   },
   samurai: {
     name: 'Samurai', short: 'Samurai', faction: 'djnzuar', class: 'destroyer', cost: 12,
     ratings: { o: 4, d: 2, m: 4 },
     desc: 'A fast, aggressive raider with cruiser-sized plasma guns and thin shields.',
-    hull: 7, shields: { front: 2, left: 1, right: 1, rear: 0 }, speed: [2, 4], clicks: 3, power: 4,
+    hull: 7, shields: { front: 2, left: 1, right: 1, rear: 0 }, speed: [2, 4], clicks: 1, clicksAtSpeed: { 2: 3, 3: 2 }, power: 4,
     weapons: ['heavyPlasma', 'plasma', 'acid'],
   },
   grunt: {
     name: 'Grunt', short: 'Grunt', faction: 'djnzuar', class: 'corvette', cost: 6,
     ratings: { o: 2, d: 2, m: 2 },
     desc: 'Cheap and expendable. Field a swarm of them.',
-    hull: 5, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [1, 3], clicks: 1, power: 2,
+    hull: 5, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
     weapons: ['plasma', 'spine'],
   },
 
@@ -232,28 +233,28 @@ export const SHIPS = {
     name: 'Firefly', short: 'Firefly', faction: 'pirates', class: 'corvette', cost: 10,
     ratings: { o: 2, d: 3, m: 5 },
     desc: 'Fast and nimble, and tough for a corvette. Circles its prey with a turret.',
-    hull: 6, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [2, 5], clicks: 3, power: 2,
+    hull: 6, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3, 4: 3 }, power: 2,
     weapons: ['autocannon', 'disruptor'],
   },
   rouge: {
     name: 'Rouge', short: 'Rouge', faction: 'pirates', class: 'corvette', cost: 11,
     ratings: { o: 3, d: 2, m: 4, u: 2 },
     desc: 'A fast boarder. Dives in, harpoons a ship to cripple it, and gets out.',
-    hull: 5, shields: { front: 1, left: 1, right: 1, rear: 1 }, speed: [2, 4], clicks: 3, power: 2,
+    hull: 5, shields: { front: 1, left: 1, right: 1, rear: 1 }, speed: [2, 4], clicks: 1, clicksAtSpeed: { 2: 3, 3: 2 }, power: 2,
     weapons: ['breaching', 'boarding'],
   },
   outrider: {
     name: 'Outrider', short: 'Outrider', faction: 'pirates', class: 'destroyer', cost: 14,
     ratings: { o: 3, d: 3, m: 3, u: 3 },
     desc: 'Tricky and well-rounded. Leaves mines behind for anyone chasing it.',
-    hull: 8, shields: { front: 2, left: 1, right: 1, rear: 2 }, speed: [1, 4], clicks: 2, power: 3,
+    hull: 8, shields: { front: 2, left: 1, right: 1, rear: 2 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 3,
     weapons: ['autocannon', 'breaching', 'disruptor'], pd: [pd('flechette', 1)], special: 'mineDrop',
   },
   freeTrader: {
     name: 'Free Trader', short: 'Free Trader', faction: 'pirates', class: 'destroyer', cost: 13,
     ratings: { o: 2, d: 3, m: 3, u: 3 },
     desc: 'Sturdy and slow but nimble, with the heaviest flak in the game and a hold full of spares.',
-    hull: 9, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [1, 3], clicks: 3, clicksAtSpeed: { 3: 1 }, power: 3,
+    hull: 9, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 3, 2: 3 }, power: 3,
     weapons: ['autocannon', 'autocannon', 'disruptor'], pd: [pd('flechette', 4)], special: 'smugglersHold',
   },
 };

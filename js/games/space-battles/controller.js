@@ -250,7 +250,7 @@ export function mount({ container, me, sendInput }) {
           <span class="sbp-cost">${def.cost} pts</span>
         </div>
         <p class="sbp-desc">${escapeHtml(def.desc || '')}</p>
-        <div class="sbp-stats">Hull ${def.hull} · Shields F${sh.front} L${sh.left} R${sh.right} Rr${sh.rear} · Speed ${def.speed[0]}–${def.speed[1]} · Turn ${def.clicks}${def.clicksAtSpeed ? ` (${Object.entries(def.clicksAtSpeed).map(([s, c]) => `${c} at speed ${s}`).join(', ')})` : ''} · ⚡${def.power} · Agility ${CLASSES[def.class].agility}${def.squadrons ? ` · ✈ Carrier (${def.squadrons} squadrons)` : ''}${def.special ? ` · ${SPECIALS[def.special].icon} ${escapeHtml(SPECIALS[def.special].name)}` : ''}</div>
+        <div class="sbp-stats">Hull ${def.hull} · Shields F${sh.front} L${sh.left} R${sh.right} Rr${sh.rear} · Speed ${def.speed[0]}–${def.speed[1]} · Turn clicks by speed ${Array.from({ length: def.speed[1] - def.speed[0] + 1 }, (_, i) => def.clicksAtSpeed?.[def.speed[0] + i] ?? def.clicks).join('/')} · ⚡${def.power} · Agility ${CLASSES[def.class].agility}${def.squadrons ? ` · ✈ Carrier (${def.squadrons} squadrons)` : ''}${def.special ? ` · ${SPECIALS[def.special].icon} ${escapeHtml(SPECIALS[def.special].name)}` : ''}</div>
         ${open ? weaponLines(def, type) : ''}
         <button class="sbp-buy" data-act="buy" data-t="${type}" ${problem ? 'disabled' : ''}>${problem ? escapeHtml(problem) : `Buy · ${def.cost} pts`}</button>
       </li>`;
