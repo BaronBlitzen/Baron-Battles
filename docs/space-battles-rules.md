@@ -35,12 +35,13 @@ the TV plays out the whole round at once.
 
 ### Fleet building (point cap)
 
-- Each side gets **60 points**. A side's points are **split evenly between that team's players**,
+- **Battle size** (picked on the TV; defaults to the size for the number of players): **Small** 60 points and 10 ships per side, 36×20 map (2 players); **Medium** 120 points, 20 ships, 50×28 map (3–6 players); **Large** 180 points, 30 ships, 62×34 map (7–8 players). Asteroids scale with the map.
+- Each side gets **60 points** (Small). A side's points are **split evenly between that team's players**,
   rounded down. Examples: 1 player → 60; 2 players → 30 each; 3 → 20 each; 4 → 15 each.
 - Both sides always have the same total, no matter how many players are on each team.
 - Players buy ships from their faction's list at the costs in §9. **Duplicates are fine.**
 - **Squadrons** are bought separately, and only to fill a carrier the player owns
-  (up to **3 per carrier**).
+  (up to the carrier's slots: 3, or 4 for the Queen).
 - **Unspent points are lost.**
 - A side can't have more than **10 ships**. If a team is at 10 ships, its players can't buy more ships.
 - If a player's share is too small to buy their faction's cheapest ship, the TV asks someone to
@@ -261,6 +262,10 @@ Movement). Stances are revealed on the TV when the Move starts. A stance lasts t
 ---
 
 ## 7. Attacking
+
+> **Replaced (built):** attacking, weapons, ships, criticals and the stance wording now follow
+> [space-battles-weapons-v2.md](space-battles-weapons-v2.md) (Power, Spinal/Battery/Turret arcs, d10
+> to-hit with agility). Where this section or §9 disagrees with it, the v2 doc wins.
 
 - Each ship can attack from **up to 2 arcs** per round (Evasive: 1). **Each weapon** in a fired arc
   picks **its own target**: a ship or a squadron that is in that arc, in range of that weapon, and in

@@ -4,16 +4,16 @@
 import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, WEAPONS, SHIPS, SCENARIOS, TIMING, ZONES, MISSIONS, FLEET, STANCES,
-  CRITICALS, CRIT_POOL, ARCS, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS,
+  CRITICALS, CRIT_POOL, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS, HIT, SPECIALS, BATTLE_SIZES,
 } from './data.js';
 import {
   classOf, shipDef, simulateMove, sanitizeMovePlan, defaultMovePlan, sanitizeFirePlan,
   defaultFirePlan, rangeBand, zoneFacing, applyDamage, arcWeapons, fleetValue,
   MOVE_TICKS, pointShare, fleetCost, cheapestShipCost, buyProblem, weaponKey, applyShieldDamage,
-  applyHullDamage, pullToward, arcShots, stanceDamage, sanitizeRepair, applyRepair, shieldsOff,
-  hullHitCount, absorbableShields, maxSpeed, critCount, isSquad, squadDef, SQUAD_R, unitDistance,
-  hitChance, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTarget, latchTarget,
-  launchSpot, canDock,
+  applyHullDamage, pullToward, stanceDamage, sanitizeRepair, applyRepair, shieldsOff,
+  absorbableShields, maxSpeed, critCount, isSquad, squadDef, SQUAD_R, unitDistance,
+  needToHit, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTarget, latchTarget,
+  launchSpot, canDock, mineSpot, sanitizeHold, sizeRules, sizeForPlayers,
   squadBuyProblem, killValue,
 } from './rules.js';
 
@@ -47,6 +47,7 @@ const publicShip = (s) => ({
   // Stance: null while it's still secret (Plan Movement); lastStance can't be picked again.
   stance: s.stance ? { ...s.stance } : null, lastStance: s.lastStance || 'balanced',
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
+  specialUsed: s.specialUsed || 0,
 });
 
 // Position and heading are set by deploy().
@@ -54,7 +55,7 @@ function makeShip(id, type, owner) {
   const def = SHIPS[type];
   return {
     id, type, faction: def.faction, owner, x: 0, y: 0, heading: 0,
-    speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true,
+    speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true, specialUsed: 0,
   };
 }
 
@@ -105,11 +106,38 @@ function rollAsteroids(field) {
 }
 
 export function start({ container, players, setPhoneState, onExit }) {
-  const base = SCENARIOS.m1;
-  const scenario = base.asteroidField ? { ...base, asteroids: rollAsteroids(base.asteroidField) } : base;
-  const { map, asteroids } = scenario;
   const people = Object.fromEntries(players.map((p) => [p.id, { ...p }]));
   const order = players.map((p) => p.id);
+  // Battle size (Small / Medium / Large): sets the points, the ship cap and the map. Until someone
+  // picks one on the TV, it follows the number of players.
+  let size = sizeForPlayers(order.length);
+  let sizePicked = false;
+  let scenario, map, asteroids, stars, rockShapes;
+
+  // Builds the map for the current size: scaled-up map and asteroid field, new random asteroids.
+  function buildScenario() {
+    const base = SCENARIOS.m1;
+    const sz = sizeRules(size);
+    const kx = sz.map.w / base.map.w, ky = sz.map.h / base.map.h;
+    const f = base.asteroidField;
+    const field = {
+      ...f,
+      count: f.count.map((n) => Math.round(n * sz.mult)),
+      area: { x0: f.area.x0 * kx, x1: f.area.x1 * kx, y0: f.area.y0 * ky, y1: f.area.y1 * ky },
+    };
+    scenario = { ...base, map: { ...sz.map }, asteroidField: field, asteroids: rollAsteroids(field) };
+    map = scenario.map;
+    asteroids = scenario.asteroids;
+    stars = Array.from({ length: Math.round(260 * sz.mult) }, () => ({
+      x: Math.random() * map.w, y: Math.random() * map.h, r: Math.random() * 1.3 + 0.3, a: Math.random() * 0.6 + 0.2,
+    }));
+    rockShapes = asteroids.map((r) => Array.from({ length: 13 }, (_, i) => {
+      const a = (i / 13) * Math.PI * 2;
+      const k = 0.9 + Math.random() * 0.15;
+      return [r.x + Math.cos(a) * r.r * k, r.y + Math.sin(a) * r.r * k];
+    }));
+  }
+  buildScenario();
   const online = new Set(players.filter((p) => p.online !== false).map((p) => p.id));
 
   const teams = {}; // playerId -> faction
@@ -130,6 +158,9 @@ export function start({ container, players, setPhoneState, onExit }) {
   let movePlans = {};
   let firePlans = {};
   let repairPlans = {}; // playerId -> { shipId: Damage Control repair choice }
+  let holdPlans = {}; // playerId -> { shipId: Smuggler's Hold choice { target, kind } }
+  let mines = []; // [{ id, x, y }] dropped by Mine Drop (neutral)
+  let mineCount = 0;
   let anim = null;
   let result = null;
   let battleFactions = [];
@@ -154,15 +185,6 @@ export function start({ container, players, setPhoneState, onExit }) {
   const subEl = container.querySelector('.sb-subhud');
   const overlay = container.querySelector('.sb-overlay');
   let scale = 20;
-
-  const stars = Array.from({ length: 260 }, () => ({
-    x: Math.random() * map.w, y: Math.random() * map.h, r: Math.random() * 1.3 + 0.3, a: Math.random() * 0.6 + 0.2,
-  }));
-  const rockShapes = asteroids.map((r) => Array.from({ length: 13 }, (_, i) => {
-    const a = (i / 13) * Math.PI * 2;
-    const k = 0.9 + Math.random() * 0.15;
-    return [r.x + Math.cos(a) * r.r * k, r.y + Math.sin(a) * r.r * k];
-  }));
 
   function resize() {
     const r = board.getBoundingClientRect();
@@ -203,7 +225,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   const required = () => order.filter((id) => online.has(id) && shipsOf(id).length > 0);
 
   // ----- Fleet building -----
-  const shareOf = (id) => pointShare(playersOn(teams[id]).length);
+  const shareOf = (id) => pointShare(playersOn(teams[id]).length, sizeRules(size).sidePoints);
   const spentOf = (id) => fleetCost(fleets[id] || []);
   const teamShipCount = (f) => playersOn(f).reduce((n, id) => n + (fleets[id] || []).length, 0);
   const overBudget = (id) => teams[id] && spentOf(id) > shareOf(id);
@@ -221,7 +243,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     if (used.length > 2) out.push('Players must be on only 2 factions');
     else if (used.length < 2) out.push('Players must be on 2 factions, with at least one player on each');
     for (const f of used) {
-      const share = pointShare(playersOn(f).length);
+      const share = pointShare(playersOn(f).length, sizeRules(size).sidePoints);
       const cheapest = cheapestShipCost(f);
       if (share < cheapest) {
         out.push(`${FACTIONS[f].short}: ${share} points each isn't enough for a ship (cheapest ${cheapest}). Someone please switch teams.`);
@@ -252,10 +274,14 @@ export function start({ container, players, setPhoneState, onExit }) {
       secondsLeft: secondsLeft(),
       scenarioId: scenario.id,
       mission,
+      size,
+      sidePoints: sizeRules(size).sidePoints,
+      maxShips: sizeRules(size).maxShips,
       fleets: phase === 'setup' ? Object.fromEntries(order.map((id) => [id, fleets[id] || []])) : null,
       surrender: { ...surrender },
       map,
       asteroids,
+      mines: mines.map((m) => ({ ...m })),
       factions: battleFactions,
       people: Object.fromEntries(order.map((id) => [id, { name: nameOf(id), color: colorOf(id) }])),
       teams: { ...teams },
@@ -280,7 +306,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     } else if (msg.type === 'buy') {
       const f = teams[id];
       const mine = fleets[id] || [];
-      if (!f || buyProblem(msg.shipType, f, mine, shareOf(id), teamShipCount(f))) return;
+      if (!f || buyProblem(msg.shipType, f, mine, shareOf(id), teamShipCount(f), sizeRules(size).maxShips)) return;
       fleets[id] = [...mine, { type: msg.shipType, wing: [] }];
       delete ready[id];
     } else if (msg.type === 'buySquad') {
@@ -320,12 +346,34 @@ export function start({ container, players, setPhoneState, onExit }) {
     pushState();
   }
 
+  // Battle size: changes points, ship cap and the map. Fleets over the new budget must shrink.
+  function pickSize(id) {
+    if (phase !== 'setup' || !BATTLE_SIZES.some((s) => s.id === id)) return;
+    sizePicked = true;
+    if (id === size) return;
+    size = id;
+    buildScenario();
+    resize();
+    recheckBudgets();
+    renderSetup();
+    pushState();
+  }
+
   function renderSetup() {
     const problems = setupProblems();
     overlay.className = 'sb-overlay show';
     overlay.innerHTML = `
       <div class="sb-panel sb-setup">
         <p class="eyebrow">Space Battles · ${escapeHtml(scenario.name)}</p>
+        <div class="sb-missions sb-sizes">
+          ${BATTLE_SIZES.map((s) => {
+            const r = sizeRules(s.id);
+            return `
+            <button data-size="${s.id}" class="${s.id === size ? 'on' : ''}">
+              <b>${escapeHtml(s.name)}</b><small>${escapeHtml(s.label)} · ${r.sidePoints} points per side · ${s.map.w}×${s.map.h} map</small>
+            </button>`;
+          }).join('')}
+        </div>
         <div class="sb-missions">
           ${MISSIONS.map((m) => `
             <button data-mission="${m.id}" class="${m.id === mission ? 'on' : ''}" ${m.available ? '' : 'disabled'}>
@@ -333,18 +381,18 @@ export function start({ container, players, setPhoneState, onExit }) {
             </button>`).join('')}
         </div>
         <h2>Pick a side and build your fleet on your phone</h2>
-        <p class="muted">Each side gets ${FLEET.sidePoints} points, split evenly between its players. Up to ${FLEET.maxShipsPerSide} ships per side.</p>
+        <p class="muted">Each side gets ${sizeRules(size).sidePoints} points, split evenly between its players. Up to ${sizeRules(size).maxShips} ships per side.</p>
         <div class="sb-factions">
           ${FACTION_ORDER.map((f) => {
             const fd = FACTIONS[f];
             const ps = playersOn(f);
-            const share = pointShare(ps.length);
+            const share = pointShare(ps.length, sizeRules(size).sidePoints);
             return `
               <div class="sb-faction ${fd.available ? '' : 'soon'}" style="--fc:${fd.color}">
                 <h3>${escapeHtml(fd.name)}</h3>
                 ${fd.available ? `<p class="muted">${escapeHtml(fd.blurb)}</p>` : ''}
                 ${fd.available ? `
-                  ${ps.length ? `<p class="sb-share">${share} points each · ${teamShipCount(f)}/${FLEET.maxShipsPerSide} ships</p>` : ''}
+                  ${ps.length ? `<p class="sb-share">${share} points each · ${teamShipCount(f)}/${sizeRules(size).maxShips} ships</p>` : ''}
                   <ul class="sb-plist">
                     ${ps.length ? ps.map((id) => {
                       const mine = fleets[id] || [];
@@ -362,6 +410,7 @@ export function start({ container, players, setPhoneState, onExit }) {
         </ul>
       </div>`;
     overlay.querySelectorAll('[data-mission]').forEach((b) => b.addEventListener('click', () => pickMission(b.dataset.mission)));
+    overlay.querySelectorAll('[data-size]').forEach((b) => b.addEventListener('click', () => pickSize(b.dataset.size)));
   }
 
   function beginBattle() {
@@ -381,6 +430,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     let qn = 0;
     for (const [s, types] of wings) squads.push(...makeSquads(s, types, () => `q${++qn}`));
     kills = Object.fromEntries(battleFactions.map((f) => [f, 0]));
+    mines = [];
     ready = {};
     phase = 'intro';
     phaseEndsAt = now() + TIMING.introMs;
@@ -420,6 +470,7 @@ export function start({ container, players, setPhoneState, onExit }) {
         for (const c of s.crits || []) delete c.fresh;
       }
       repairPlans = {};
+      holdPlans = {};
     }
     ready = {};
     movePlans = {};
@@ -454,9 +505,12 @@ export function start({ container, players, setPhoneState, onExit }) {
     store[id] = plans;
     if (kind === 'planFire') {
       repairPlans[id] = {};
+      holdPlans[id] = {};
       for (const s of mine) {
         const r = sanitizeRepair(s, msg.repairs?.[s.id]);
         if (r) repairPlans[id][s.id] = r;
+        const h = sanitizeHold(s, msg.holds?.[s.id], ships);
+        if (h) holdPlans[id][s.id] = h;
       }
     }
     ready[id] = true;
@@ -491,12 +545,23 @@ export function start({ container, players, setPhoneState, onExit }) {
     for (const s of ships) {
       if (s.alive && plans[s.id].squads && isCarrier(s) && !critCount(s, 'comms')) Object.assign(newOrders, plans[s.id].squads);
     }
-    const res = simulateMove(ships, plans, scenario);
+    const res = simulateMove(ships, plans, { ...scenario, mines });
     const t0 = now();
     phoneShips = ships.map(clone);
     phoneSquads = squads.map(cloneSquad);
     const before = new Set(ships.filter((s) => s.alive).map((s) => s.id));
     ships = ships.map((s) => res.ships.find((r) => r.id === s.id) || s);
+    // Mines: the ones set off are gone; Mine Drop leaves a new one behind each ship that used it.
+    const minesBefore = mines.map((m) => ({ ...m, hitAt: res.minesHit.find((h) => h.id === m.id)?.tick }));
+    mines = mines.filter((m) => !res.minesHit.some((h) => h.id === m.id));
+    const newMines = new Set();
+    for (const s of ships) {
+      if (!s.alive || !plans[s.id].mine) continue;
+      s.specialUsed = (s.specialUsed || 0) + 1;
+      const m = { id: `m${++mineCount}`, ...mineSpot(s, map) };
+      mines.push(m);
+      newMines.add(m.id);
+    }
     for (const s of ships) if (!s.alive && before.has(s.id)) credit(s);
     // Burn, Disruptor and Grapple effects only last for this one move.
     for (const s of ships) { s.burn = false; s.disrupted = false; s.grappled = false; }
@@ -541,7 +606,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     }
     anim = {
       kind: 'move', start: t0, end: t0 + TIMING.moveMs + squadMs + 900, frames: res.frames, pending, fx, squadPaths,
-      launched, docking,
+      launched, docking, minesBefore, newMines,
       dying: new Set(ships.filter((s) => !s.alive && before.has(s.id)).map((s) => s.id)),
       dieAt: t0 + TIMING.moveMs + 100,
     };
@@ -550,37 +615,42 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   // ---------- Fire ----------
-  // One weapon's shots at one target (one "attack": all its hits add up).
-  // `shots` already includes stance bonuses and penalties (arcShots). A Hunter rerolls
-  // each miss once against its marked ship.
-  // Against a squadron: the squadron hit chance (rules §8), no crits, no special effects.
-  function rollWeapon(s, t, w, shots) {
+  const d10 = () => 1 + Math.floor(Math.random() * HIT.die);
+
+  // Rolls `shots` d10s needing `need`+ (a 10 always hits). Each hit records whether it was a
+  // critical roll (`critOn`+, or never when `canCrit` is false). Returns { hits, crits: [bool per hit] }.
+  function rollShots(shots, need, critOn, canCrit) {
+    const crits = [];
+    for (let i = 0; i < shots; i++) {
+      const r = d10();
+      if (r >= need || r === HIT.die) crits.push(canCrit && r >= critOn);
+    }
+    return { hits: crits.length, crits };
+  }
+
+  // One weapon's shots at one target (one "attack": all its hits add up). Weapons v2: every
+  // shot rolls a d10 (needToHit). Against a squadron: no crits, no special effects.
+  function rollWeapon(s, t, w, shots = w.shots) {
     const wd = WEAPONS[w.weapon];
     const band = rangeBand(unitDistance(s, t));
-    const chance = hitChance(wd, band, t);
-    const reroll = STANCES[s.stance?.id || 'balanced'].reroll && s.stance.target === t.id;
-    let hits = 0;
-    for (let i = 0; i < shots; i++) {
-      if (Math.random() < chance || (reroll && Math.random() < chance)) hits++;
-    }
     const sq = isSquad(t);
+    const need = needToHit(s, wd, t);
+    const r = rollShots(shots, need, wd.critOn || HIT.critOn, !sq);
     return {
-      band, shots, hits, damage: hits * wd.damage, perHit: wd.damage, crit: sq ? 0 : wd.crit || 0,
+      band, shots, need, hits: r.hits, crits: r.crits, perHit: wd.damage,
       effect: sq ? null : wd.effect || null, weapon: w.weapon,
     };
   }
 
-  // A squadron's automatic attack (rules §8). Warden Screen: −1 shot against screened ships.
+  // A squadron's automatic attack (rules §8). Same d10 roll; only bombers crit (on a 10, vs ships).
+  // Screen (no ship has it right now): −1 shot against screened ships.
   function rollSquad(q, t, profile) {
     let shots = profile.shots;
     const screen = !isSquad(t) && screened(t, ships);
     if (screen) shots = Math.max(0, shots - 1);
-    let hits = 0;
-    for (let i = 0; i < shots; i++) if (Math.random() < profile.hit) hits++;
-    return {
-      band: 'close', shots, hits, damage: hits * profile.damage, perHit: profile.damage,
-      crit: isSquad(t) ? 0 : squadDef(q).crit || 0, effect: null, weapon: null, screen,
-    };
+    const need = needToHit(q, null, t);
+    const r = rollShots(shots, need, HIT.critOn, !isSquad(t) && !!squadDef(q).crit);
+    return { band: 'close', shots, need, hits: r.hits, crits: r.crits, perHit: profile.damage, effect: null, weapon: null, screen };
   }
 
   // Gives `ship` one random critical (rules §7). Mutates the ship; returns the new critical.
@@ -590,7 +660,6 @@ export function start({ container, players, setPhoneState, onExit }) {
     const pick = (list) => list[Math.floor(Math.random() * list.length)];
     const pool = CRIT_POOL.filter((id) => id !== 'comms' || (isCarrier(ship) && wingOf(ship.id, squads).length));
     const c = { id: pick(pool), fresh: true };
-    if (c.id === 'weaponsOffline') c.arc = pick(ARCS.filter((arc) => arcWeapons(ship, arc).length));
     if (c.id === 'shieldGen') c.zone = pick(ZONES);
     if (!ship.crits) ship.crits = [];
     ship.crits.push(c);
@@ -598,6 +667,8 @@ export function start({ container, players, setPhoneState, onExit }) {
     if (c.id === 'engines') ship.speed = Math.min(ship.speed, maxSpeed(ship));
     return c;
   }
+
+  const critLabel = (c) => `${CRITICALS[c.id].name}${c.zone ? ` (${c.zone})` : ''}`;
 
   function resolveFire() {
     // All attacks land together on copies, so a ship destroyed now still fired.
@@ -612,16 +683,15 @@ export function start({ container, players, setPhoneState, onExit }) {
       const plan = planned || defaultFirePlan(s, all, asteroids);
       for (const a of plan) {
         const weapons = arcWeapons(s, a.arc);
-        const shots = arcShots(s, a.arc, a.targets, all);
         for (const [wi, targetId] of Object.entries(a.targets)) {
           const w = weapons[wi];
           const t = unitById(targetId);
-          if (!w || !t || shots[wi] === undefined) continue;
+          if (!w || !t) continue;
           if (WEAPONS[w.weapon].once) nextById[s.id].used[weaponKey(a.arc, wi)] = true;
-          attacks.push({ from: s.id, to: t.id, arc: a.arc, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w, shots[wi]) });
+          attacks.push({ from: s.id, to: t.id, arc: a.arc, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w) });
         }
       }
-      // Point-defense fires on its own at the nearest enemy squadron in close range (not
+      // Point-defense fires on its own at the nearest enemy squadron in close range (free, not
       // changed by stances or Weapons Offline).
       const pt = pdTarget(s, squads);
       if (pt) for (const w of shipDef(s).pd) attacks.push({ from: s.id, to: pt.id, zone: null, pd: true, ...rollWeapon(s, pt, w, w.shots) });
@@ -650,7 +720,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       const target = nextById[a.to];
       if (isSquad(target)) {
         // Squadrons have no zones or shields: damage goes straight to hull.
-        const hullLost = Math.min(target.hull, a.damage);
+        const hullLost = Math.min(target.hull, a.hits * a.perHit);
         target.hull -= hullLost;
         a.shieldLost = 0;
         a.hullLost = hullLost;
@@ -659,11 +729,20 @@ export function start({ container, players, setPhoneState, onExit }) {
         p.hullLost += hullLost;
         continue;
       }
+      // Critical rolls (weapons v2): while the zone still has shields, the hit does double damage;
+      // once they're gone, it causes a critical effect instead. Hits land in order, shields first.
+      let shieldLeft = absorbableShields(target, a.zone);
+      let total = 0, doubled = 0, critEffects = 0;
+      for (const isCrit of a.crits) {
+        let dmg = a.perHit;
+        if (isCrit && shieldLeft > 0) { dmg *= 2; doubled++; }
+        else if (isCrit && a.effect !== 'ion') critEffects++;
+        shieldLeft = Math.max(0, shieldLeft - dmg);
+        total += dmg;
+      }
+      a.damage = total;
       // Defender's stance: Overcharge +1 (attack that hit), Brace halves.
-      const amount = stanceDamage(target, a.damage, { attack: true });
-      // Hits that get past the shields each roll the crit chance (Ion never hurts hull).
-      const throughHits = a.effect === 'ion' ? 0
-        : hullHitCount(amount, a.hits, a.perHit, absorbableShields(target, a.zone));
+      const amount = stanceDamage(target, total, { attack: true });
       const d = a.effect === 'ion'
         ? applyShieldDamage(target, a.zone, amount)
         : applyDamage(target, a.zone, amount);
@@ -674,13 +753,12 @@ export function start({ container, players, setPhoneState, onExit }) {
       p.shieldLost += d.shieldLost + d.tempLost;
       p.hullLost += d.hullLost;
       if (!a.hits) continue;
+      if (doubled) tag(a.to, `CRIT ×2 vs shields${doubled > 1 ? ` (${doubled})` : ''}`, '#ffd43b');
       if (target.hull > 0) {
-        let crits = 0;
-        for (let i = 0; i < throughHits; i++) if (Math.random() < a.crit) crits++;
-        if (a.effect === 'board') crits++; // Boarding Harpoon: a hit always causes 1 critical
-        for (let i = 0; i < crits; i++) {
+        if (a.effect === 'board') critEffects++; // Boarding Harpoon: a hit always causes 1 critical
+        for (let i = 0; i < critEffects; i++) {
           const c = addCrit(target);
-          tag(a.to, `CRIT: ${CRITICALS[c.id].name}${c.arc ? ` (${c.arc})` : c.zone ? ` (${c.zone})` : ''}`, '#ff8787');
+          tag(a.to, `CRIT: ${critLabel(c)}`, '#ff8787');
         }
       }
       if (a.effect === 'acid') {
@@ -727,6 +805,24 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (r.critRemoved) parts.push(`fixed ${CRITICALS[r.critRemoved].name}`);
       tag(s.id, `🔧 ${parts.length ? parts.join(', ') : 'Nothing to repair'}`, '#8ce99a', acidAt);
     }
+    // Smuggler's Hold (once per game): +2 hull or remove a critical, on itself or a friendly ship
+    // in close range. Only if the Free Trader survived the shooting.
+    for (const s of next) {
+      const h = holdPlans[s.owner]?.[s.id];
+      const t = h && nextById[h.target];
+      if (!h || s.hull <= 0 || !t || t.hull <= 0) continue;
+      s.specialUsed = (s.specialUsed || 0) + 1;
+      endOfRound = true;
+      if (h.kind === 'hull') {
+        const gain = Math.min(SPECIALS.smugglersHold.hull, shipDef(t).hull - t.hull);
+        t.hull += gain;
+        if (gain) pending.push({ at: acidAt, shipId: t.id, zone: null, shieldLost: 0, hullLost: -gain });
+        tag(t.id, `📦 +${gain} hull`, '#8ce99a', acidAt);
+      } else {
+        const c = (t.crits || []).shift();
+        tag(t.id, c ? `📦 fixed ${CRITICALS[c.id].name}` : '📦 Nothing to fix', '#8ce99a', acidAt);
+      }
+    }
     // Hangar repair (Protectorate): squadrons docked in a living carrier. The label goes on the
     // carrier, since docked squadrons aren't drawn.
     const repaired = {};
@@ -770,7 +866,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       const t = q.latched && nextById[q.latched];
       if (!t || !q.alive || q.hull <= 0 || !t.alive || t.hull <= 0) continue;
       const c = addCrit(t);
-      tag(t.id, `BOARDED! CRIT: ${CRITICALS[c.id].name}${c.arc ? ` (${c.arc})` : c.zone ? ` (${c.zone})` : ''}`, '#ff8787', acidAt);
+      tag(t.id, `BOARDED! CRIT: ${critLabel(c)}`, '#ff8787', acidAt);
       q.alive = false;
       boarded.add(q.id);
       endOfRound = true;
@@ -1121,6 +1217,30 @@ export function start({ container, players, setPhoneState, onExit }) {
     ctx.restore();
   }
 
+  // A mine: a small spiked red ball with a blinking light.
+  function drawMine(x, y, r, t) {
+    ctx.save();
+    ctx.strokeStyle = '#ff8787';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * r * 0.7, y + Math.sin(a) * r * 0.7);
+      ctx.lineTo(x + Math.cos(a) * r * 1.35, y + Math.sin(a) * r * 1.35);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#5c1f24';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = Math.floor(t / 500) % 2 ? '#ff6b6b' : '#ffd8d8';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function label(text, x, y, color, size) {
     ctx.font = `700 ${size}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
@@ -1183,6 +1303,13 @@ export function start({ container, players, setPhoneState, onExit }) {
       ctx.stroke();
     }
 
+    // Mines. During the Move: the old ones until they're set off; new drops appear after it.
+    const moving = anim?.kind === 'move' && t < anim.start + TIMING.moveMs;
+    const mineList = moving
+      ? anim.minesBefore.filter((m) => m.hitAt === undefined || t < anim.start + (m.hitAt / MOVE_TICKS) * TIMING.moveMs)
+      : mines;
+    for (const m of mineList) drawMine(m.x * S, m.y * S, Math.max(5, S * 0.28), t);
+
     const visible = ships.filter((s) => s.alive || anim?.dying.has(s.id));
     if (phase !== 'setup') for (const s of visible) drawShip(s, t);
     if (phase !== 'setup') {
@@ -1203,6 +1330,7 @@ export function start({ container, players, setPhoneState, onExit }) {
         ctx.arc(f.x * S, f.y * S, S * (0.3 + k * 1.4), 0, Math.PI * 2);
         ctx.stroke();
         if (f.ram) label('RAM!', f.x * S, f.y * S - S, '#ff922b', Math.max(18, S));
+        if (f.kind === 'mine') label('MINE!', f.x * S, f.y * S - S, '#ff6b6b', Math.max(18, S));
       }
       for (const p of anim.pending) popup(p.shipId, p.at, p.shieldLost, p.hullLost, t, p.fromX, p.fromY);
     }

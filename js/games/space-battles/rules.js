@@ -5,8 +5,8 @@
 // A ship at runtime looks like:
 // { id, type, faction, owner, x, y, heading, speed, hull, shields: { front, left, right, rear }, alive }
 import {
-  FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ARCS, ZONES, FLEET, STANCES, CLASS_STANCES, CRITICALS,
-  SQUADRONS, SQUADRON, SQUAD_ORDERS,
+  FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ARCS, ARC_DEFS, ZONES, FLEET, STANCES, CLASS_STANCES, CRITICALS,
+  SQUADRONS, SQUADRON, SQUAD_ORDERS, HIT, SPECIALS, MINES, BATTLE_SIZES,
 } from './data.js';
 //
 // A squadron at runtime looks like:
@@ -134,17 +134,38 @@ export function unitDistance(a, b) {
 // Display name of a unit ("Valiant", "Hawk squadron").
 export const unitName = (u) => (isSquad(u) ? `${squadDef(u).short} squadron` : SHIPS[u.type].short);
 
-// A ship weapon's hit chance at `band` against `target` (rules §7/§8 decided details):
-// against squadrons, PD and Autocannons use their normal chance, Flechettes their own
-// squadron chance, Ion Cannons and Boarding Harpoons can't fire, and everything else loses
-// SQUADRON.hitPenalty (never below SQUADRON.minHit).
-export function hitChance(wd, band, target) {
-  if (!isSquad(target)) return wd.hit[band] || 0;
-  if (wd.noSquadrons) return 0;
-  if (wd.hitVsSquadron) return wd.hitVsSquadron[band] || 0;
-  const base = wd.hit[band] || 0;
-  if (!base || wd.pd || wd.fullVsSquadrons) return base;
-  return Math.max(SQUADRON.minHit, base - SQUADRON.hitPenalty);
+// ---------- To hit (weapons v2) ----------
+// Every shot rolls a d10 and hits on HIT.base+ plus the target's agility. A 10 always hits.
+// Agility: the target's class (squadrons: SQUADRON.agility), +1 for an Evasive ship unless the
+// attacker is a Hunter that marked it. A Hunter hits its mark on one lower. Point-defense ignores
+// squadron agility. `attacker` may be a ship or a squadron; `wd` is the weapon (null for squadrons).
+export function agilityOf(target, attacker = null) {
+  if (isSquad(target)) return SQUADRON.agility;
+  let a = classOf(target).agility || 0;
+  const st = stanceOf(target);
+  if (st.agility && !(attacker && huntTarget(attacker) === target.id)) a += st.agility;
+  return a;
+}
+
+export function needToHit(attacker, wd, target) {
+  if (wd?.pd && isSquad(target)) return HIT.base;
+  let need = HIT.base + agilityOf(target, attacker);
+  if (!isSquad(attacker) && huntTarget(attacker) === target.id) need -= STANCES.hunter.huntHit;
+  return Math.max(2, need);
+}
+
+// Chance that one d10 roll hits: rolls of `need` to 10 (a 10 always hits).
+export const chanceOf = (need) => Math.max(1, HIT.die + 1 - need) / HIT.die;
+
+// Can weapon `wd` reach range band `band`?
+const bandIndex = (band) => RANGE_BANDS.findIndex((b) => b.id === band);
+export const inReach = (wd, band) => !!band && bandIndex(band) <= bandIndex(wd.reach);
+
+// Chance one shot of `wd` from `attacker` hits `target` at `band` (0 if it can't fire at it).
+export function hitChance(attacker, wd, band, target) {
+  if (!inReach(wd, band)) return 0;
+  if (isSquad(target) && wd.noSquadrons) return 0;
+  return chanceOf(needToHit(attacker, wd, target));
 }
 
 // Carrier capacity (0 for ships that aren't carriers).
@@ -157,11 +178,20 @@ export function factionSquadTypes(faction) {
     .sort((a, b) => SQUADRONS[a].cost - SQUADRONS[b].cost);
 }
 
+// Squadron types one carrier type may hold (the Queen only carries some).
+export function carrierSquadTypes(type) {
+  const def = SHIPS[type];
+  return factionSquadTypes(def.faction).filter((t) => !def.carries || def.carries.includes(t));
+}
+
 // Living squadrons of one carrier (docked or launched).
 export const wingOf = (carrierId, squads) => squads.filter((q) => q.alive && q.carrier === carrierId);
 
 // A squadron that is out in space (alive and launched). Docked squadrons can't shoot or be shot.
 export const inSpace = (u) => u.alive && !u.docked;
+
+// Latchers only go after ships, so they can't Intercept squadrons.
+export const squadOrderAllowed = (type, order) => !(SQUADRONS[type]?.role === 'boarding' && order === 'intercept');
 
 // One squadron's order from the phone: { order, target? } (see SQUAD_ORDERS). "Stay docked" only
 // for docked squadrons, Return only for launched ones; Attack needs a living enemy ship.
@@ -169,6 +199,7 @@ export const inSpace = (u) => u.alive && !u.docked;
 export function sanitizeSquadOrder(q, o, ships) {
   const def = o && SQUAD_ORDERS[o.order];
   if (!def || (def.dockedOnly && !q.docked) || (def.launchedOnly && q.docked)) return null;
+  if (!squadOrderAllowed(q.type, o.order)) return null;
   const out = { order: o.order };
   if (def.needsTarget) {
     const t = ships.find((x) => x.id === o.target);
@@ -249,7 +280,7 @@ export function planSquadMoves(squads, ships, map) {
     if (order === 'escort') {
       if (carrier?.alive) {
         const cls = classOf(carrier);
-        const a = (carrier.heading + [120, 180, -120][q.slot % 3]) * RAD;
+        const a = (carrier.heading + [120, 180, -120, 150][q.slot % 4]) * RAD;
         const d = cls.length / 2 + SQUADRON.escortGap;
         goal = { x: carrier.x + Math.cos(a) * d, y: carrier.y + Math.sin(a) * d };
       } else goal = { x: q.x, y: q.y };
@@ -350,8 +381,14 @@ export function zoneFacing(ship, px, py) {
   return 'rear';
 }
 
-// A target is in an arc if its center is inside that zone's wedge.
-export const inArc = (ship, arc, target) => arc === 'turret' || zoneFacing(ship, target.x, target.y) === arc;
+// A target is in an arc if its center is within the arc's half-angle of the ship's nose
+// (spinal ±15°, battery ±135°, turret anywhere).
+export function inArc(ship, arc, target) {
+  const half = ARC_DEFS[arc]?.half ?? 0;
+  if (half >= 180) return true;
+  const ang = Math.atan2(target.y - ship.y, target.x - ship.x) / RAD;
+  return Math.abs(normAngle(ang - ship.heading)) <= half;
+}
 
 export function rangeBand(dist) {
   for (const b of RANGE_BANDS) if (dist <= b.max) return b.id;
@@ -390,58 +427,129 @@ export function stanceOptions(ship) {
   return list.filter((id) => id === 'balanced' || id !== ship.lastStance);
 }
 
-// Arcs this ship may fire this round (Evasive: 1, Full Burn: 0).
-export const maxArcs = (ship) => stanceOf(ship).maxArcs ?? 2;
+// ---------- Power and firing (weapons v2) ----------
+// Power this ship has to fire weapons this round: its own Power, changed by its stance
+// (Overcharge +2, Brace / Damage Control −1, Evasive −2) and Weapons Offline (−2 each).
+// Full Burn can't fire at all. Never below 0.
+export function shipPower(ship) {
+  const st = stanceOf(ship);
+  if (st.noFire) return 0;
+  const p = shipDef(ship).power + (st.powerChange || 0) - critCount(ship, 'weaponsOffline') * CRITICALS.weaponsOffline.power;
+  return Math.max(0, p);
+}
+
+export const weaponPower = (w) => WEAPONS[w.weapon].power;
+
+// Power a fire plan uses: [{ arc, targets: { [weaponIndex]: targetId } }].
+export function planPower(ship, plan) {
+  let n = 0;
+  for (const a of plan || []) {
+    const weapons = arcWeapons(ship, a.arc);
+    for (const wi of Object.keys(a.targets || {})) if (weapons[wi]) n += weaponPower(weapons[wi]);
+  }
+  return n;
+}
 
 // The ship a Hunter must attack (or null when the ship isn't hunting).
 export const huntTarget = (ship) => (ship.stance?.id === 'hunter' ? ship.stance.target : null);
 
-// Expected damage from one weapon at one range band (shown on the phone).
-// Ion Cannon damage only strips shields, so the phone labels it as shield damage.
-export function expectedWeaponDamage(w, band, shots = w.shots, target = null) {
+// Expected damage from one weapon of `ship` at `target` (shown on the phone). Ion Cannon damage
+// only strips shields, so the phone labels it as shield damage. Criticals are left out.
+export function expectedWeaponDamage(ship, w, band, target) {
   const wd = WEAPONS[w.weapon];
-  return shots * (target ? hitChance(wd, band, target) : wd.hit[band] || 0) * wd.damage;
+  return w.shots * hitChance(ship, wd, band, target) * wd.damage;
 }
 
-// Shot bonus for one weapon of `ship` firing at `target` (Overcharge, Hunter). Applies to every
-// weapon the ship fires (Hunter: every weapon aimed at the marked ship).
-export function shotBonus(ship, target) {
-  const st = stanceOf(ship);
-  let n = st.shotBonus || 0;
-  if (st.huntShotBonus && huntTarget(ship) === target.id) n += st.huntShotBonus;
-  return n;
-}
-
-// Final shots for every weapon fired from one arc: `targets` = { [weaponIndex]: targetId }.
-// Bonuses go on every weapon. Penalties (rules §5 decided details) remove 1 shot per arc from
-// the firing weapon with the most shots (ties: the one listed first); a weapon can drop to 0:
-//   - Brace / Damage Control: −1 shot on the arc,
-//   - target is Evasive and at long range: −1 shot from the weapons aimed at that target
-//     (not if this ship is a Hunter that marked it).
-export function arcShots(ship, arc, targets, ships) {
-  const weapons = arcWeapons(ship, arc);
-  const byId = Object.fromEntries(ships.map((s) => [s.id, s]));
-  const shots = {};
-  for (const [wi, id] of Object.entries(targets)) {
-    if (!weapons[wi] || !byId[id]) continue;
-    shots[wi] = weapons[wi].shots + shotBonus(ship, byId[id]);
+// Valid targets for one weapon: enemy, alive, in that weapon's arc and reach, and in line of
+// sight. Sorted nearest first. Used-up once-per-game weapons have none, and so does a ship that
+// can't fire (Full Burn). A Hunter may only target its marked ship. `units` = ships and
+// squadrons. Asteroids never block shots at squadrons (they fly over them).
+export function weaponTargets(ship, arc, wi, units, asteroids) {
+  const w = arcWeapons(ship, arc)[wi];
+  if (!w || weaponUsedUp(ship, arc, wi) || stanceOf(ship).noFire) return [];
+  const wd = WEAPONS[w.weapon];
+  const hunt = huntTarget(ship);
+  const out = [];
+  for (const t of units) {
+    if (!t.alive || t.docked || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
+    if (hunt && t.id !== hunt) continue;
+    const dist = unitDistance(ship, t);
+    const band = rangeBand(dist);
+    if (!hitChance(ship, wd, band, t)) continue;
+    if (!isSquad(t) && !lineOfSight(ship, t, asteroids)) continue;
+    out.push({ id: t.id, dist, band, squad: isSquad(t), need: needToHit(ship, wd, t), expected: expectedWeaponDamage(ship, w, band, t) });
   }
-  const takeOne = (wis) => {
-    const best = wis.filter((wi) => shots[wi] > 0).sort((a, b) => shots[b] - shots[a] || a - b)[0];
-    if (best !== undefined) shots[best]--;
-  };
-  const all = Object.keys(shots).map(Number);
-  if (stanceOf(ship).shotPenalty) takeOne(all);
-  for (const id of new Set(Object.values(targets))) {
-    const t = byId[id];
-    if (!t || !stanceOf(t).longRangeShotPenalty || huntTarget(ship) === t.id) continue;
-    if (rangeBand(shipDistance(ship, t)) !== 'long') continue;
-    takeOne(all.filter((wi) => targets[wi] === id));
-  }
-  return shots;
+  return out.sort((a, b) => a.dist - b.dist);
 }
 
-// Damage one attack (or collision, asteroid, edge, acid) actually deals to `ship` after its
+// Fire plan for one ship: [{ arc, targets: { [weaponIndex]: targetId } }]. A weapon left out
+// of `targets` holds its fire. The weapons fired can't cost more than the ship's power.
+//
+// Default when time runs out: the set of weapons (within power) with the most expected damage,
+// each shooting the nearest target it can hit. Once-per-game weapons are held.
+export function defaultFirePlan(ship, units, asteroids) {
+  const cands = [];
+  for (const arc of ARCS) {
+    arcWeapons(ship, arc).forEach((w, wi) => {
+      if (isOnce(w)) return;
+      const t = weaponTargets(ship, arc, wi, units, asteroids)[0];
+      if (t) cands.push({ arc, wi, id: t.id, cost: weaponPower(w), value: t.expected });
+    });
+  }
+  const power = shipPower(ship);
+  let best = { value: -1, picks: [] };
+  for (let mask = 0; mask < 1 << cands.length; mask++) {
+    let cost = 0, value = 0;
+    const picks = [];
+    cands.forEach((c, i) => { if (mask & (1 << i)) { cost += c.cost; value += c.value; picks.push(c); } });
+    if (cost <= power && value > best.value) best = { value, picks };
+  }
+  return groupPicks(best.picks);
+}
+
+function groupPicks(picks) {
+  const out = [];
+  for (const arc of ARCS) {
+    const mine = picks.filter((p) => p.arc === arc);
+    if (mine.length) out.push({ arc, targets: Object.fromEntries(mine.map((p) => [p.wi, p.id])) });
+  }
+  return out;
+}
+
+// Keep only legal attacks: each weapon at a valid target, in plan order, while power lasts.
+export function sanitizeFirePlan(ship, plan, units, asteroids) {
+  if (!Array.isArray(plan)) return [];
+  let left = shipPower(ship);
+  const picks = [];
+  const seen = new Set();
+  for (const a of plan) {
+    if (!a || !ARCS.includes(a.arc) || !a.targets || typeof a.targets !== 'object') continue;
+    arcWeapons(ship, a.arc).forEach((w, wi) => {
+      const id = a.targets[wi];
+      const key = weaponKey(a.arc, wi);
+      if (!id || seen.has(key) || weaponPower(w) > left) return;
+      if (!weaponTargets(ship, a.arc, wi, units, asteroids).some((t) => t.id === id)) return;
+      seen.add(key);
+      left -= weaponPower(w);
+      picks.push({ arc: a.arc, wi, id });
+    });
+  }
+  return groupPicks(picks);
+}
+
+// ---------- Criticals (rules §7) ----------
+// ship.crits = [{ id, arc?, zone?, fresh? }], oldest first. `fresh` = caught this round; criticals
+// marked `nextRound` in data.js (Weapons Offline, Bridge Fire) only act once it's gone.
+export const critCount = (ship, id) => (ship.crits || []).filter((c) => c.id === id && !c.fresh).length;
+const critCountAny = (ship, id) => (ship.crits || []).filter((c) => c.id === id).length;
+
+// Max speed after Damaged Engines (never below the class's minimum speed). Engines act at once.
+export function maxSpeed(ship) {
+  const [min, max] = shipDef(ship).speed;
+  return Math.max(min, max - critCountAny(ship, 'engines'));
+}
+
+// Damage one attack (or collision, asteroid, edge, mine, acid) actually deals to `ship` after its
 // stance: Overcharge +1 for a weapon attack that hit at least once, Brace halves (rounded up).
 export function stanceDamage(ship, amount, { attack = false } = {}) {
   const st = stanceOf(ship);
@@ -462,84 +570,6 @@ export function shieldsOff(ship, zone) {
   if (st.id === 'fullBurn' && zone === 'rear') return true;
   return false;
 }
-
-// Valid targets for one weapon: enemy, alive, in that arc, in range of THIS weapon,
-// and in line of sight. Sorted nearest first. Used-up once-per-game weapons have none.
-// A Hunter may only target its marked ship. `units` = ships and squadrons. Asteroids never
-// block shots at squadrons (they fly over them).
-export function weaponTargets(ship, arc, wi, units, asteroids) {
-  const w = arcWeapons(ship, arc)[wi];
-  if (!w || weaponUsedUp(ship, arc, wi) || maxArcs(ship) === 0 || arcOffline(ship, arc)) return [];
-  const wd = WEAPONS[w.weapon];
-  const hunt = huntTarget(ship);
-  const out = [];
-  for (const t of units) {
-    if (!t.alive || t.docked || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
-    if (hunt && t.id !== hunt) continue;
-    const dist = unitDistance(ship, t);
-    const band = rangeBand(dist);
-    if (!band || !hitChance(wd, band, t)) continue;
-    if (!isSquad(t) && !lineOfSight(ship, t, asteroids)) continue;
-    out.push({ id: t.id, dist, band, squad: isSquad(t), expected: expectedWeaponDamage(w, band, w.shots + shotBonus(ship, t), t) });
-  }
-  return out.sort((a, b) => a.dist - b.dist);
-}
-
-// Fire plan for one ship: [{ arc, targets: { [weaponIndex]: targetId } }], at most maxArcs arcs.
-// A weapon left out of `targets` holds its fire.
-//
-// Default when time runs out: the best arcs; each weapon shoots the nearest target it
-// can hit. Once-per-game weapons are held.
-export function defaultFirePlan(ship, ships, asteroids) {
-  const options = [];
-  for (const arc of ARCS) {
-    const targets = {};
-    let expected = 0;
-    arcWeapons(ship, arc).forEach((w, wi) => {
-      if (isOnce(w)) return;
-      const t = weaponTargets(ship, arc, wi, ships, asteroids)[0];
-      if (t) { targets[wi] = t.id; expected += t.expected; }
-    });
-    if (Object.keys(targets).length) options.push({ arc, targets, expected });
-  }
-  options.sort((a, b) => b.expected - a.expected);
-  return options.slice(0, maxArcs(ship)).map(({ arc, targets }) => ({ arc, targets }));
-}
-
-// Keep only legal attacks: up to maxArcs different arcs, each weapon at a valid target.
-export function sanitizeFirePlan(ship, plan, ships, asteroids) {
-  if (!Array.isArray(plan)) return [];
-  const out = [];
-  const used = new Set();
-  for (const a of plan) {
-    if (out.length >= maxArcs(ship)) break;
-    if (!a || !ARCS.includes(a.arc) || used.has(a.arc) || !a.targets || typeof a.targets !== 'object') continue;
-    const targets = {};
-    arcWeapons(ship, a.arc).forEach((w, wi) => {
-      const id = a.targets[wi];
-      if (id && weaponTargets(ship, a.arc, wi, ships, asteroids).some((t) => t.id === id)) targets[wi] = id;
-    });
-    if (!Object.keys(targets).length) continue;
-    used.add(a.arc);
-    out.push({ arc: a.arc, targets });
-  }
-  return out;
-}
-
-// ---------- Criticals (rules §7) ----------
-// ship.crits = [{ id, arc?, zone?, fresh? }], oldest first. `fresh` = caught this round; criticals
-// marked `nextRound` in data.js (Weapons Offline, Bridge Fire) only act once it's gone.
-export const critCount = (ship, id) => (ship.crits || []).filter((c) => c.id === id && !c.fresh).length;
-const critCountAny = (ship, id) => (ship.crits || []).filter((c) => c.id === id).length;
-
-// Max speed after Damaged Engines (never below the class's minimum speed). Engines act at once.
-export function maxSpeed(ship) {
-  const [min, max] = shipDef(ship).speed;
-  return Math.max(min, max - critCountAny(ship, 'engines'));
-}
-
-// Weapons Offline: that arc can't fire until the critical is repaired.
-export const arcOffline = (ship, arc) => (ship.crits || []).some((c) => c.id === 'weaponsOffline' && !c.fresh && c.arc === arc);
 
 // Zones whose shields Damage Control can't restore (Shield Generator Hit).
 export const shieldsBroken = (ship, zone) => (ship.crits || []).some((c) => c.id === 'shieldGen' && c.zone === zone);
@@ -630,6 +660,39 @@ export function applyRepair(ship, choice) {
   return out;
 }
 
+// ---------- Special abilities (weapons v2) ----------
+// Uses left of the ship's special ability `id` (0 if it doesn't have it). ship.specialUsed counts uses.
+export function specialLeft(ship, id) {
+  if (shipDef(ship).special !== id) return 0;
+  return Math.max(0, SPECIALS[id].uses - (ship.specialUsed || 0));
+}
+
+// Where a dropped mine goes: just behind the ship's stern, kept on the map.
+export function mineSpot(ship, map) {
+  const d = classOf(ship).length / 2 + MINES.dropBehind;
+  const a = ship.heading * RAD;
+  return {
+    x: Math.max(0.3, Math.min(map.w - 0.3, ship.x - Math.cos(a) * d)),
+    y: Math.max(0.3, Math.min(map.h - 0.3, ship.y - Math.sin(a) * d)),
+  };
+}
+
+// Smuggler's Hold choice from the phone: { target: shipId, kind: 'hull' | 'crit' }. The target is
+// this ship or a living friendly ship in close range. Invalid → null (not used).
+export function sanitizeHold(ship, h, ships) {
+  if (!h || specialLeft(ship, 'smugglersHold') <= 0) return null;
+  if (h.kind !== 'hull' && h.kind !== 'crit') return null;
+  const t = ships.find((x) => x.id === h.target);
+  if (!t || !t.alive || isEnemy(ship, t)) return null;
+  if (t.id !== ship.id && rangeBand(shipDistance(ship, t)) !== 'close') return null;
+  return { target: t.id, kind: h.kind };
+}
+
+// Ships a Smuggler's Hold can help: itself plus living friendly ships in close range.
+export function holdTargets(ship, ships) {
+  return ships.filter((t) => t.alive && !isEnemy(ship, t) && (t.id === ship.id || rangeBand(shipDistance(ship, t)) === 'close'));
+}
+
 // ---------- Movement ----------
 
 // Speeds the ship may pick this round with stance `stanceId`: normally current −1 / same / +1,
@@ -704,6 +767,7 @@ export function sanitizeMovePlan(ship, plan, ships = [], squads = []) {
   const mc = maxClicks(ship, plan.speed, stance.id);
   if (!plan.clicks.every((c) => Number.isInteger(c) && Math.abs(c) <= mc)) return null;
   const out = { speed: plan.speed, clicks: plan.clicks.slice(), stance };
+  if (plan.mine && specialLeft(ship, 'mineDrop') > 0) out.mine = true;
   // Carriers: optional new order for each of its living squadrons (left out or invalid = keep the
   // old one). Comms Down is checked by the TV when the orders are applied.
   if (isCarrier(ship) && plan.squads && typeof plan.squads === 'object') {
@@ -819,6 +883,9 @@ export function simulateMove(ships, plans, scenario) {
   const crashed = new Set();
   const frames = Object.fromEntries(sim.map((s) => [s.id, [{ ...pose[s.id] }]]));
   const events = [];
+  // Mines (neutral): a moving ship that comes within MINES.triggerDist sets one off.
+  const mines = (scenario.mines || []).map((m) => ({ ...m }));
+  const minesHit = []; // [{ id, tick }]
 
   const hit = (ship, px, py, amount) => {
     const at = { ...ship, ...pose[ship.id] };
@@ -853,6 +920,17 @@ export function simulateMove(ships, plans, scenario) {
       }
     }
     for (const id of moving) pose[id] = cand[id];
+    for (const id of moving) {
+      const s = byId[id];
+      if (s.destroyed) continue;
+      const poly = shipPolygon(s, pose[id]);
+      for (const m of mines) {
+        if (m.gone || pointPolygonDistance(m.x, m.y, poly) > MINES.triggerDist) continue;
+        m.gone = true;
+        minesHit.push({ id: m.id, tick: k });
+        events.push({ tick: k, kind: 'mine', a: id, x: m.x, y: m.y, damage: [hit(s, m.x, m.y, MINES.damage)] });
+      }
+    }
     for (const s of sim) frames[s.id].push({ ...pose[s.id] });
   }
 
@@ -907,7 +985,7 @@ export function simulateMove(ships, plans, scenario) {
     if (s.destroyed) s.alive = false;
     delete s.destroyed;
   }
-  return { ships: sim, frames, events };
+  return { ships: sim, frames, events, minesHit };
 }
 
 // Value of a faction's living ships, plus 1 per living squadron.
@@ -931,8 +1009,19 @@ export function cheapestShipCost(faction) {
 }
 
 // Each player's share of their side's points (rounded down).
-export function pointShare(teamSize) {
-  return teamSize > 0 ? Math.floor(FLEET.sidePoints / teamSize) : 0;
+export function pointShare(teamSize, sidePoints = FLEET.sidePoints) {
+  return teamSize > 0 ? Math.floor(sidePoints / teamSize) : 0;
+}
+
+// Points and ship cap per side for a battle size (BATTLE_SIZES).
+export function sizeRules(sizeId) {
+  const sz = BATTLE_SIZES.find((s) => s.id === sizeId) || BATTLE_SIZES[0];
+  return { ...sz, sidePoints: FLEET.sidePoints * sz.mult, maxShips: FLEET.maxShipsPerSide * sz.mult };
+}
+
+// The size meant for this many players.
+export function sizeForPlayers(n) {
+  return (BATTLE_SIZES.find((s) => n >= s.players[0] && n <= s.players[1]) || BATTLE_SIZES[BATTLE_SIZES.length - 1]).id;
 }
 
 // A player's fleet = [{ type, wing: [squadron types] }] (wing only for carriers).
@@ -943,10 +1032,10 @@ export function fleetCost(entries) {
 
 // Why `type` can't be bought right now, or null if it can.
 // `mine` = this player's fleet entries, `teamCount` = ships the whole side owns.
-export function buyProblem(type, faction, mine, share, teamCount) {
+export function buyProblem(type, faction, mine, share, teamCount, maxShips = FLEET.maxShipsPerSide) {
   const def = SHIPS[type];
   if (!def || def.faction !== faction) return 'Not your faction';
-  if (teamCount >= FLEET.maxShipsPerSide) return `Your side already has ${FLEET.maxShipsPerSide} ships`;
+  if (teamCount >= maxShips) return `Your side already has ${maxShips} ships`;
   if (fleetCost(mine) + def.cost > share) return 'Not enough points';
   return null;
 }
@@ -958,6 +1047,7 @@ export function squadBuyProblem(sqType, faction, mine, index, share) {
   if (!def || def.faction !== faction || !e) return 'Not your faction';
   const slots = carrierSlots(e.type);
   if (!slots) return 'Not a carrier';
+  if (!carrierSquadTypes(e.type).includes(sqType)) return 'Can\'t carry that';
   if ((e.wing || []).length >= slots) return 'Carrier full';
   if (fleetCost(mine) + def.cost > share) return 'Not enough points';
   return null;
