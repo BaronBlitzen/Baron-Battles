@@ -64,8 +64,8 @@ the TV plays out the whole round at once.
 | Medium | 3–6 u |
 | Long | 6–9 u |
 
-- **Ship sizes:** Corvette 1.0 × 0.5 u, Destroyer 1.4 × 0.7 u, Cruiser 2.0 × 1.0 u,
-  Battleship 2.8 × 1.4 u. A squadron is a small circle about 0.4 u across.
+- **Ship sizes:** Corvette 0.75 × 0.4 u, Destroyer 1.05 × 0.5 u, Cruiser 1.5 × 0.75 u,
+  Battleship 2.1 × 1.05 u. A squadron is a small circle about 0.4 u across.
 
 ### Obstacles
 
@@ -149,12 +149,19 @@ At the start of each round, every ship secretly picks **one stance**. It lasts t
 
 ## 6. Movement and collisions
 
-- All ships move **at the same time** along their planned paths. The TV checks for collisions in
-  small steps.
-- **Ship vs enemy ship:** both stop just before touching, and each takes **1 damage**
-  (Djnzuar ramming: see faction traits).
-- **Ship vs friendly ship:** both stop. No damage (no friendly fire).
+- All ships move **at the same time** along their planned paths. The TV checks asteroids and the
+  map edge in small steps.
+- Each segment **turns first, then flies straight** 2 u.
+- **Ships pass through each other** while moving. Ships only collide if their outlines **overlap
+  where they end** the move. Then both are pulled back along their own paths until they're just
+  touching, and the collision applies:
+  - **Ship vs enemy ship:** each takes **1 damage** (Djnzuar ramming: see faction traits).
+  - **Ship vs friendly ship:** no damage (no friendly fire).
+- **Asteroid:** stops the ship mid-path, **2 damage**.
 - **Map edge:** the ship stops at the edge and takes **2 damage**.
+- Collision, asteroid and edge damage hit the hull zone **facing what was hit**, shields first.
+- A ship that is stopped by a collision, asteroid or the edge **drops to its minimum speed**.
+- A ship destroyed during the Move phase is removed before Fire (it doesn't fire).
 - Squadrons move **after** ships, so they can follow or chase them. Squadrons fly over ships and
   never collide.
 
@@ -283,7 +290,7 @@ exist too. Their doctrine centers on **big, slow, powerful capital ships**.
 |---|---|---|---|---|---|---|---|---|---|---|
 | Gnasher Raider | Corvette | 6 | 2/1/1/0 | 1–3 | 2 | 3 Plasma | 1 Plasma | — | — | — |
 | Ripper Destroyer | Destroyer | 9 | 2/2/2/0 | 1–3 | 2 | 4 Plasma | 2 Plasma + 1 Spine | — | 1 Thorn | — |
-| Broodmaw Cruiser | Cruiser | 13 | 3/2/2/1 | 1–2 | 1 | 4 Plasma | 3 Plasma + 1 Spine | 1 Spine | 2 Thorn | Carries **3 squadrons** |
+| Broodmaw Cruiser | Cruiser | 13 | 3/2/2/1 | 1–2 | 1 (2 at speed 1) | 4 Plasma | 3 Plasma + 1 Spine | 1 Spine | 2 Thorn | Carries **3 squadrons**. **Slow and steady:** 2 turn clicks per segment at speed 1 |
 | Warlord Dreadhulk | Battleship | 20 | 5/3/3/1 | 1–2 | 1 | 2 Maw + 3 Plasma | 4 Plasma + 2 Spine | 1 Spine | 2 Thorn | **Ram prow:** ramming deals 5 instead of 3 |
 
 **Squadrons**

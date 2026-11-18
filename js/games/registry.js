@@ -17,7 +17,7 @@ export const games = [
     name: 'Space Battles',
     icon: '🚀',
     minPlayers: 2,
-    maxPlayers: 6, // Milestone 1 has 3 ships per side; raise this when fleets grow
+    maxPlayers: 8, // 5 ships per side, so up to 5 players per team
     description: 'Plan fleet moves in secret, then watch the battle unfold.',
     host: () => import('./space-battles/host.js'),
     controller: () => import('./space-battles/controller.js'),

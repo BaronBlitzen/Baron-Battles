@@ -228,6 +228,7 @@ body.phone #app { min-height: 100dvh; display: flex; }
 .sbp-segs li.on { border-color: var(--accent); }
 .sbp-segs li b { text-align: center; }
 .sbp-segs li small { color: var(--muted); font-weight: 600; }
+.sbp-burn { margin: 0; padding: 8px 12px; border-radius: 12px; background: rgba(255,146,43,.15); border: 1px solid #ff922b; color: #ffd8a8; font-weight: 700; font-size: .9rem; }
 .sbp-notice { color: var(--accent); font-weight: 700; margin: 0; }
 .sbp-notice:empty { display: none; }
 .sbp-keys { font-size: .8rem; text-align: center; }

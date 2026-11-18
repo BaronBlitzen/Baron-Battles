@@ -4,7 +4,7 @@
 //
 // A ship at runtime looks like:
 // { id, type, faction, owner, x, y, heading, speed, hull, shields: { front, left, right, rear }, alive }
-import { FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ZONES } from './data.js';
+import { FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ARCS } from './data.js';
 
 const RAD = Math.PI / 180;
 const TURN_PART = 0.25; // share of a segment's time spent turning (turn first, then fly straight)
@@ -122,7 +122,7 @@ export function zoneFacing(ship, px, py) {
 }
 
 // A target is in an arc if its center is inside that zone's wedge.
-export const inArc = (ship, arc, target) => zoneFacing(ship, target.x, target.y) === arc;
+export const inArc = (ship, arc, target) => arc === 'turret' || zoneFacing(ship, target.x, target.y) === arc;
 
 export function rangeBand(dist) {
   for (const b of RANGE_BANDS) if (dist <= b.max) return b.id;
@@ -173,7 +173,7 @@ export function validTargets(ship, arc, ships, asteroids) {
 // Default when time runs out: the 2 best arcs, each at its nearest valid target.
 export function defaultFirePlan(ship, ships, asteroids) {
   const options = [];
-  for (const arc of ZONES) {
+  for (const arc of ARCS) {
     const t = validTargets(ship, arc, ships, asteroids)[0];
     if (t) options.push({ arc, targetId: t.id, expected: t.expected });
   }
@@ -188,7 +188,7 @@ export function sanitizeFirePlan(ship, plan, ships, asteroids) {
   const used = new Set();
   for (const a of plan) {
     if (out.length >= 2) break;
-    if (!a || !ZONES.includes(a.arc) || used.has(a.arc)) continue;
+    if (!a || !ARCS.includes(a.arc) || used.has(a.arc)) continue;
     if (!validTargets(ship, a.arc, ships, asteroids).some((t) => t.id === a.targetId)) continue;
     used.add(a.arc);
     out.push({ arc: a.arc, targetId: a.targetId });
@@ -199,15 +199,26 @@ export function sanitizeFirePlan(ship, plan, ships, asteroids) {
 // ---------- Movement ----------
 
 // Speeds the ship may pick this round: current −1 / same / +1, within its class range.
+// A ship with `burn` set (Pirates' "every ship is home") moves as if using Full Burn:
+// change by up to 2, and may go up to 1 above max speed.
 export function speedOptions(ship) {
-  const [min, max] = shipDef(ship).speed;
+  let [min, max] = shipDef(ship).speed;
+  let change = 1;
+  const home = ship.burn && FACTIONS[ship.faction].traits.home;
+  if (home) { change = home.speedChange; max += home.overMax; }
   const out = [];
-  for (let s = ship.speed - 1; s <= ship.speed + 1; s++) if (s >= min && s <= max) out.push(s);
+  for (let s = ship.speed - change; s <= ship.speed + change; s++) if (s >= min && s <= max) out.push(s);
+  if (!out.length) out.push(Math.min(Math.max(ship.speed, min), max)); // e.g. coming back down from a burn
   return out;
 }
 
 // Turn clicks allowed per segment (speed 0: may rotate 1 click in place).
-export const maxClicks = (ship, speed) => (speed === 0 ? 1 : shipDef(ship).clicks);
+// Some ships turn better at certain speeds (`clicksAtSpeed` in data.js).
+export function maxClicks(ship, speed) {
+  if (speed === 0) return 1;
+  const def = shipDef(ship);
+  return def.clicksAtSpeed?.[speed] ?? def.clicks;
+}
 
 export function defaultMovePlan(ship) {
   const opts = speedOptions(ship);
@@ -268,7 +279,8 @@ export function applyDamage(ship, zone, amount) {
 
 const EDGE_POINT = { west: [-1000, 0], east: [1000, 0], north: [0, -1000], south: [0, 1000] };
 
-// Moves every ship at the same time, checking collisions in small steps.
+// Moves every ship at the same time, checking asteroids and the map edge in small
+// steps (they stop a ship mid-path). Ships pass through each other; see below.
 // `plans` = { [shipId]: { speed, clicks } } (already sanitized). Ships are not mutated.
 // Returns { ships, frames: { [id]: [pose per tick] }, events }.
 export function simulateMove(ships, plans, scenario) {
@@ -293,54 +305,71 @@ export function simulateMove(ships, plans, scenario) {
     const t = k / MOVE_TICKS;
     const cand = {};
     for (const id of moving) cand[id] = poseAt(start[id], plans[id], t);
-    const cur = (id) => cand[id] || pose[id];
-
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const id of [...moving]) {
-        const s = byId[id];
-        const cls = classOf(s);
-        const edge = outOfBounds(cand[id], cls, scenario.map);
-        if (edge) {
-          stop(id); delete cand[id]; changed = true;
-          const [ex, ey] = EDGE_POINT[edge];
-          const p = pose[id];
-          events.push({ tick: k, kind: 'edge', a: id, x: p.x, y: p.y,
-            damage: [hit(s, edge === 'west' || edge === 'east' ? ex : p.x, edge === 'north' || edge === 'south' ? ey : p.y, MOVE.edgeDamage)] });
-          continue;
-        }
-        const rock = scenario.asteroids.find((r) => rectHitsCircle(cand[id], cls, r));
-        if (rock) {
-          stop(id); delete cand[id]; changed = true;
-          const p = pose[id];
-          events.push({ tick: k, kind: 'asteroid', a: id, x: (p.x + rock.x) / 2, y: (p.y + rock.y) / 2,
-            damage: [hit(s, rock.x, rock.y, MOVE.asteroidDamage)] });
-        }
+    for (const id of [...moving]) {
+      const s = byId[id];
+      const cls = classOf(s);
+      const edge = outOfBounds(cand[id], cls, scenario.map);
+      if (edge) {
+        stop(id); delete cand[id];
+        const [ex, ey] = EDGE_POINT[edge];
+        const p = pose[id];
+        events.push({ tick: k, kind: 'edge', a: id, x: p.x, y: p.y,
+          damage: [hit(s, edge === 'west' || edge === 'east' ? ex : p.x, edge === 'north' || edge === 'south' ? ey : p.y, MOVE.edgeDamage)] });
+        continue;
       }
-      for (let i = 0; i < sim.length; i++) {
-        for (let j = i + 1; j < sim.length; j++) {
-          const A = sim[i], B = sim[j];
-          if (!moving.has(A.id) && !moving.has(B.id)) continue;
-          if (!polygonsOverlap(shipPolygon(A, cur(A.id)), shipPolygon(B, cur(B.id)))) continue;
-          for (const id of [A.id, B.id]) if (moving.has(id)) { stop(id); delete cand[id]; }
-          crashed.add(A.id); crashed.add(B.id);
-          changed = true;
-          const pa = pose[A.id], pb = pose[B.id];
-          const ev = { tick: k, kind: 'ship', a: A.id, b: B.id, x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2, damage: [] };
-          if (isEnemy(A, B)) {
-            const ramA = FACTIONS[A.faction].traits.ram, ramB = FACTIONS[B.faction].traits.ram;
-            const toB = ramA ? ramA.enemyDamage : MOVE.enemyCollisionDamage;
-            const toA = ramB ? ramB.enemyDamage : ramA ? ramA.selfDamage : MOVE.enemyCollisionDamage;
-            ev.ram = !!(ramA || ramB);
-            ev.damage.push(hit(A, pb.x, pb.y, toA), hit(B, pa.x, pa.y, toB));
-          }
-          events.push(ev);
-        }
+      const rock = scenario.asteroids.find((r) => rectHitsCircle(cand[id], cls, r));
+      if (rock) {
+        stop(id); delete cand[id];
+        const p = pose[id];
+        events.push({ tick: k, kind: 'asteroid', a: id, x: (p.x + rock.x) / 2, y: (p.y + rock.y) / 2,
+          damage: [hit(s, rock.x, rock.y, MOVE.asteroidDamage)] });
       }
     }
     for (const id of moving) pose[id] = cand[id];
     for (const s of sim) frames[s.id].push({ ...pose[s.id] });
+  }
+
+  // Ships fly through each other. Only ships whose outlines overlap where they END
+  // collide: both are pulled back along their own paths, one tick at a time,
+  // until they no longer overlap. Then collision / ram damage applies.
+  const idx = Object.fromEntries(sim.map((s) => [s.id, MOVE_TICKS]));
+  const polyAt = (s) => shipPolygon(s, frames[s.id][idx[s.id]]);
+  const bumped = new Map(); // "idA|idB" -> [A, B]
+  let overlapping = true;
+  while (overlapping) {
+    overlapping = false;
+    for (let i = 0; i < sim.length; i++) {
+      for (let j = i + 1; j < sim.length; j++) {
+        const A = sim[i], B = sim[j];
+        if (!polygonsOverlap(polyAt(A), polyAt(B))) continue;
+        bumped.set(`${A.id}|${B.id}`, [A, B]);
+        if (idx[A.id] === 0 && idx[B.id] === 0) continue; // can't separate (never expected)
+        if (idx[A.id] > 0) idx[A.id]--;
+        if (idx[B.id] > 0) idx[B.id]--;
+        overlapping = true;
+      }
+    }
+  }
+  for (const s of sim) {
+    const f = frames[s.id];
+    const end = f[idx[s.id]];
+    for (let k = idx[s.id] + 1; k <= MOVE_TICKS; k++) f[k] = { ...end };
+    pose[s.id] = { ...end };
+  }
+  for (const [A, B] of bumped.values()) {
+    crashed.add(A.id);
+    crashed.add(B.id);
+    const pa = pose[A.id], pb = pose[B.id];
+    const ev = { tick: Math.max(idx[A.id], idx[B.id]), kind: 'ship', a: A.id, b: B.id,
+      x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2, damage: [] };
+    if (isEnemy(A, B)) {
+      const ramA = FACTIONS[A.faction].traits.ram, ramB = FACTIONS[B.faction].traits.ram;
+      const toB = ramA ? shipDef(A).ramDamage ?? ramA.enemyDamage : MOVE.enemyCollisionDamage;
+      const toA = ramB ? shipDef(B).ramDamage ?? ramB.enemyDamage : ramA ? ramA.selfDamage : MOVE.enemyCollisionDamage;
+      ev.ram = !!(ramA || ramB);
+      ev.damage.push(hit(A, pb.x, pb.y, toA), hit(B, pa.x, pa.y, toB));
+    }
+    events.push(ev);
   }
 
   for (const s of sim) {

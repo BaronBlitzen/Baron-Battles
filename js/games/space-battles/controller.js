@@ -2,7 +2,7 @@
 // planner (with a mini-map and ghost path) and the fire planner.
 // Plans stay on this phone until Ready is tapped; the TV checks every choice.
 import { escapeHtml } from '../../supabase.js';
-import { FACTIONS, FACTION_ORDER, CLASSES, WEAPONS, ZONES, ZONE_NAMES, RANGE_BANDS } from './data.js';
+import { FACTIONS, FACTION_ORDER, CLASSES, WEAPONS, ZONES, ARCS, ZONE_NAMES, RANGE_BANDS } from './data.js';
 import {
   classOf, shipDef, corners, speedOptions, maxClicks, defaultMovePlan, planWaypoints,
   validTargets, defaultFirePlan, arcWeapons,
@@ -184,6 +184,7 @@ export function mount({ container, me, sendInput }) {
         ${shipTabs()}
         <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}</b> <small class="muted">Hull ${s.hull} · ${shieldText(s.shields)}</small></div>
         <canvas class="sbp-map"></canvas>
+        ${s.burn ? '<p class="sbp-burn">🔥 Every ship is home: free Full Burn this round. Change speed by up to 2, up to 1 over max.</p>' : ''}
         <div class="sbp-speed">
           <button data-act="speed" data-d="-1" ${d.speed > opts[0] ? '' : 'disabled'}>−</button>
           <div><b>Speed ${d.speed}</b><small>${d.speed === s.speed ? 'same as now' : d.speed > s.speed ? 'speeding up' : 'slowing down'} · ${d.speed * 2} u</small></div>
@@ -206,7 +207,7 @@ export function mount({ container, me, sendInput }) {
 
   function fireRows(s) {
     const rows = [];
-    for (const arc of ZONES) {
+    for (const arc of ARCS) {
       if (!arcWeapons(s, arc).length) continue;
       for (const t of validTargets(s, arc, state.ships, state.asteroids)) rows.push({ arc, ...t });
     }
@@ -224,13 +225,13 @@ export function mount({ container, me, sendInput }) {
         ${shipTabs()}
         <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}</b> <small class="muted">Arcs firing ${draft.length}/2</small></div>
         <canvas class="sbp-map"></canvas>
-        ${ZONES.filter((arc) => arcWeapons(s, arc).length).map((arc) => {
+        ${ARCS.filter((arc) => arcWeapons(s, arc).length).map((arc) => {
           const ws = arcWeapons(s, arc).map((w) => `${w.shots} ${WEAPONS[w.weapon].name}`).join(' + ');
           const targets = rows.filter((x) => x.arc === arc);
           const chosen = draft.find((a) => a.arc === arc);
           return `
             <div class="sbp-arc ${chosen ? 'on' : ''}">
-              <div class="sbp-arc-head"><b>${ZONE_NAMES[arc]} arc</b><small>${escapeHtml(ws)}</small></div>
+              <div class="sbp-arc-head"><b>${arc === 'turret' ? 'Turret <small>(any direction)</small>' : `${ZONE_NAMES[arc]} arc`}</b><small>${escapeHtml(ws)}</small></div>
               ${targets.length ? targets.map((t) => {
                 const ts = shipById(t.id);
                 const on = chosen?.targetId === t.id;
@@ -310,6 +311,17 @@ export function mount({ container, me, sendInput }) {
     if (state.phase === 'planFire') {
       // Faint wedge for each arc with a weapon, plus lines to the chosen targets.
       const ANG = { front: 0, right: 90, rear: 180, left: -90 };
+      if (arcWeapons(s, 'turret').length) {
+        // Turret: fires in any direction, so draw a faint ring at long range.
+        const chosen = fireDraft[s.id].some((a) => a.arc === 'turret');
+        ctx.strokeStyle = chosen ? 'rgba(255,183,3,.45)' : 'rgba(255,255,255,.15)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.arc(X(s.x), Y(s.y), 9.5 * k, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       for (const arc of ZONES) {
         if (!arcWeapons(s, arc).length) continue;
         const chosen = fireDraft[s.id].some((a) => a.arc === arc);

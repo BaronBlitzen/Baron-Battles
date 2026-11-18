@@ -22,18 +22,51 @@ const clone = (s) => ({ ...s, shields: { ...s.shields } });
 const publicShip = (s) => ({
   id: s.id, type: s.type, faction: s.faction, owner: s.owner, x: s.x, y: s.y,
   heading: s.heading, speed: s.speed, hull: s.hull, shields: { ...s.shields }, alive: s.alive,
+  burn: !!s.burn,
 });
 
+// x and heading are set at battle start, once we know which edge the faction deploys on.
 function makeShip(id, faction, d) {
   const def = SHIPS[d.type];
   return {
-    id, type: d.type, faction, owner: null, x: d.x, y: d.y, heading: d.heading,
+    id, type: d.type, faction, owner: null, x: 0, y: d.y, heading: 0,
     speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true,
   };
 }
 
+// Each faction deploys on its own edge; a faction without one takes the free edge.
+function deploy(ships, factions, scenario) {
+  const edges = {};
+  for (const f of factions) if (FACTIONS[f].edge) edges[f] = FACTIONS[f].edge;
+  for (const f of factions) {
+    if (edges[f]) continue;
+    const taken = Object.values(edges);
+    edges[f] = taken.includes('west') ? 'east' : 'west';
+  }
+  for (const s of ships) {
+    const west = edges[s.faction] === 'west';
+    s.x = west ? scenario.deployDepth : scenario.map.w - scenario.deployDepth;
+    s.heading = west ? 0 : 180;
+  }
+}
+
+// Random asteroid layout for one battle, using the scenario's asteroidField settings.
+function rollAsteroids(field) {
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const want = Math.floor(rand(field.count[0], field.count[1] + 1));
+  const out = [];
+  for (let tries = 0; out.length < want && tries < 500; tries++) {
+    const r = Math.round(rand(field.radius[0], field.radius[1]) * 10) / 10;
+    const x = Math.round(rand(field.area.x0, field.area.x1) * 10) / 10;
+    const y = Math.round(rand(field.area.y0, field.area.y1) * 10) / 10;
+    if (out.every((o) => Math.hypot(o.x - x, o.y - y) >= o.r + r + field.gap)) out.push({ x, y, r });
+  }
+  return out;
+}
+
 export function start({ container, players, setPhoneState, onExit }) {
-  const scenario = SCENARIOS.m1;
+  const base = SCENARIOS.m1;
+  const scenario = base.asteroidField ? { ...base, asteroids: rollAsteroids(base.asteroidField) } : base;
   const { map, asteroids } = scenario;
   const people = Object.fromEntries(players.map((p) => [p.id, { ...p }]));
   const order = players.map((p) => p.id);
@@ -225,6 +258,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   function beginBattle() {
     battleFactions = FACTION_ORDER.filter((f) => playersOn(f).length > 0);
     ships = fleet.filter((s) => battleFactions.includes(s.faction)).map(clone);
+    deploy(ships, battleFactions, scenario);
     lastTeams = { ...teams };
     ready = {};
     phase = 'intro';
@@ -242,9 +276,19 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   // ---------- Planning windows ----------
+  // Pirates' "every ship is home": the first time a ship drops to half hull or less,
+  // it gets a free Full Burn move next round.
+  function checkHome(list) {
+    for (const s of list) {
+      if (!s.alive || s.homeUsed || !FACTIONS[s.faction].traits.home) continue;
+      if (s.hull <= shipDef(s).hull / 2) { s.homeUsed = true; s.burnRound = round + 1; }
+    }
+  }
+
   function startPlan(kind) {
     phase = kind;
     phaseKey++;
+    if (kind === 'planMove') for (const s of ships) s.burn = s.alive && s.burnRound === round;
     ready = {};
     movePlans = {};
     firePlans = {};
@@ -303,6 +347,8 @@ export function start({ container, players, setPhoneState, onExit }) {
     phoneShips = ships.map(clone);
     const before = new Set(ships.filter((s) => s.alive).map((s) => s.id));
     ships = ships.map((s) => res.ships.find((r) => r.id === s.id) || s);
+    for (const s of ships) s.burn = false;
+    checkHome(ships);
     const pending = [];
     const fx = [];
     for (const ev of res.events) {
@@ -367,6 +413,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     for (const s of next) if (s.alive && s.hull <= 0) { s.alive = false; dying.add(s.id); }
     phoneShips = ships.map(clone);
     ships = next;
+    checkHome(ships);
     const gap = attacks.length ? Math.min(260, 1300 / attacks.length) : 0;
     attacks.forEach((a, i) => { a.at = t0 + 200 + i * gap; });
     anim = {
@@ -500,7 +547,9 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   const SHAPES = {
     corvette: [[0.5, 0], [0.05, -0.5], [-0.5, -0.42], [-0.32, 0], [-0.5, 0.42], [0.05, 0.5]],
+    destroyer: [[0.5, 0], [0.15, -0.5], [-0.5, -0.5], [-0.5, 0.5], [0.15, 0.5]],
     cruiser: [[0.5, 0], [0.28, -0.5], [-0.5, -0.5], [-0.42, 0], [-0.5, 0.5], [0.28, 0.5]],
+    battleship: [[0.5, -0.2], [0.5, 0.2], [0.3, 0.5], [-0.5, 0.5], [-0.42, 0.2], [-0.42, -0.2], [-0.5, -0.5], [0.3, -0.5]],
   };
 
   function drawShip(s, t) {
@@ -571,7 +620,8 @@ export function start({ container, players, setPhoneState, onExit }) {
     const frac = Math.max(0, hull / def.hull);
     ctx.fillStyle = frac > 0.5 ? '#51cf66' : frac > 0.25 ? '#fcc419' : '#ff6b6b';
     ctx.fillRect(cx - barW / 2, by, barW * frac, 5);
-    label(s.owner ? `${def.short} · ${nameOf(s.owner)}` : def.short, cx, cy - R - 10, color, Math.max(11, S * 0.42));
+    const burnTag = s.burn && phase === 'planMove' ? ' 🔥' : '';
+    label(`${s.owner ? `${def.short} · ${nameOf(s.owner)}` : def.short}${burnTag}`, cx, cy - R - 10, color, Math.max(11, S * 0.42));
     ctx.restore();
   }
 
@@ -639,7 +689,7 @@ export function start({ container, players, setPhoneState, onExit }) {
 
     const visible = ships.filter((s) => s.alive || anim?.dying.has(s.id));
     if (phase !== 'setup') for (const s of visible) drawShip(s, t);
-    else for (const s of ships) if (FACTIONS[s.faction].available) drawShip(s, t);
+    // (During setup the ships aren't drawn yet: deployment edges depend on the chosen factions.)
 
     if (anim?.kind === 'move') {
       for (const f of anim.fx) {

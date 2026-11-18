@@ -31,7 +31,7 @@ rules' build plan, plus the setup flow.
 2. **Ships (only these 4)**, using the stats in rules §9:
    - Protectorate: **Lancer Torpedo Boat** (Corvette), **Valiant Strike Carrier** (Cruiser, carrying no squadrons yet)
    - Djnzuar: **Gnasher Raider** (Corvette), **Broodmaw Cruiser** (Cruiser, carrying no squadrons yet)
-3. **Milestone 1 scenario:** a simple map with **asteroids only**. Each side has **1 Cruiser + 2 Corvettes**,
+3. **Milestone 1 scenario:** a simple map with **asteroids only**: 3–6 asteroids at random spots in the middle of the map, rolled fresh for each battle. Each side has **1 Cruiser + 2 Corvettes**,
    deployed on opposite edges (Protectorate west, Djnzuar east).
 4. **The round** (rules §4), with two planning windows:
    - **Plan Movement:** for each owned ship, set speed (−1 / same / +1, within its range) and turn
@@ -69,6 +69,17 @@ rules' build plan, plus the setup flow.
 Stances, critical hits, squadrons, point-defense, Pirates, Battleships, Destroyers, nebulas /
 planets / debris / mines, objectives (Control Points), point costs. **Design the code so these are
 easy to add**: keep ship and weapon stats in a data file, not scattered through the logic.
+
+### Milestone 2 (built)
+
+- **Pirates are playable.** Turret weapons fire in any direction (a turret attack is one of the
+  ship's 2 attacks). "Every ship is home": the first time a Pirate ship drops to half hull or less,
+  next round it may change speed by up to 2 and go 1 over max speed.
+- **All ship classes**, using the rules §12 fleets (5 ships per side, so up to 8 players).
+  Protectorate deploys west, Djnzuar east, Pirates on whichever edge is free.
+- Warlord Dreadhulk ram prow: ramming deals 5.
+- Not yet: stances, criticals, squadrons (and Screen / carrier wings), point-defense, other
+  obstacles, Control Points.
 
 ---
 
