@@ -65,7 +65,8 @@ The Pirates' "a turret attack counts as one of the ship's 2 attacks" rule goes a
 
 ## Range ✅
 
-- Range bands stay the same: Close 0–3 u, Medium 3–6 u, Long 6–9 u.
+- ✅ Range bands (made longer): **Close 0–4 u, Medium 4–8 u, Long 8–12 u**. Squadron attacks and point-defense use Close (4 u).
+- ✅ Fighters are faster: **Hawk 7, Swarmers 6** (bombers and Latchers unchanged).
 - Each weapon has a **reach** (Close, Medium or Long). It can fire at targets within its reach.
 - **Range does not change the chance to hit.**
 

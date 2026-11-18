@@ -129,9 +129,9 @@ export const WEAPONS = {
 
 // Range bands, measured between the closest edges of two ships (in units).
 export const RANGE_BANDS = [
-  { id: 'close', name: 'Close', max: 3 },
-  { id: 'medium', name: 'Medium', max: 6 },
-  { id: 'long', name: 'Long', max: 9 },
+  { id: 'close', name: 'Close', max: 4 },
+  { id: 'medium', name: 'Medium', max: 8 },
+  { id: 'long', name: 'Long', max: 12 },
 ];
 
 // length = along the ship's heading, width = side to side. value = fleet value / kill points.
@@ -386,13 +386,13 @@ export const CRIT_POOL = ['engines', 'thrusters', 'weaponsOffline', 'shieldGen',
 // `vsSquadron` / `vsShip` = { shots, damage } (d10 roll like ship weapons). `crit`: its 10s against
 // ships are criticals (bombers only).
 export const SQUADRONS = {
-  hawk: { name: 'Hawk', short: 'Hawk', faction: 'protectorate', role: 'fighter', cost: 2, hull: 3, speed: 5,
+  hawk: { name: 'Hawk', short: 'Hawk', faction: 'protectorate', role: 'fighter', cost: 2, hull: 3, speed: 7,
     vsSquadron: { shots: 2, damage: 1 }, vsShip: { shots: 1, damage: 1 }, crit: false,
     desc: 'Fighter. Hunts enemy squadrons first.' },
   talon: { name: 'Talon', short: 'Talon', faction: 'protectorate', role: 'bomber', cost: 2, hull: 3, speed: 4,
     vsSquadron: { shots: 1, damage: 1 }, vsShip: { shots: 2, damage: 1 }, crit: true,
     desc: 'Bomber. Goes after ships first.' },
-  swarmers: { name: 'Swarmers', short: 'Swarmers', faction: 'djnzuar', role: 'fighter', cost: 2, hull: 2, speed: 4,
+  swarmers: { name: 'Swarmers', short: 'Swarmers', faction: 'djnzuar', role: 'fighter', cost: 2, hull: 2, speed: 6,
     vsSquadron: { shots: 2, damage: 1 }, vsShip: { shots: 1, damage: 1 }, crit: false,
     desc: 'Fighter. Very cheap. Hunts enemy squadrons first.' },
   gorers: { name: 'Gorers', short: 'Gorers', faction: 'djnzuar', role: 'bomber', cost: 4, hull: 4, speed: 3,

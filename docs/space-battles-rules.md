@@ -98,9 +98,9 @@ the TV plays out the whole round at once.
 
 | Band | Distance |
 |---|---|
-| Close | 0–3 u |
-| Medium | 3–6 u |
-| Long | 6–9 u |
+| Close | 0–4 u |
+| Medium | 4–8 u |
+| Long | 8–12 u |
 
 - **Ship sizes:** Corvette 0.75 × 0.4 u, Destroyer 1.05 × 0.5 u, Cruiser 1.5 × 0.75 u,
   Battleship 2.1 × 1.05 u. A squadron is a circle **0.4 u** across.
@@ -474,7 +474,7 @@ and torpedo-boat corvettes.
 
 | Squadron | Type | Cost | Hull | Speed | vs Squadrons | vs Ships |
 |---|---|---|---|---|---|---|
-| Hawk | Fighter | 2 | 3 | 5 | 2 shots, 60%, 1 dmg | 1 shot, 40%, 1 dmg |
+| Hawk | Fighter | 2 | 3 | 7 | 2 shots, 60%, 1 dmg | 1 shot, 40%, 1 dmg |
 | Talon | Bomber | 2 | 3 | 4 | 1 shot, 30%, 1 dmg | 2 shots, 65%, 1 dmg, 15% crit |
 
 ### Djnzuar
@@ -510,7 +510,7 @@ exist too. Their doctrine centers on **big, slow, powerful capital ships**.
 
 | Squadron | Type | Cost | Hull | Speed | vs Squadrons | vs Ships | Special |
 |---|---|---|---|---|---|---|---|
-| Grunt Swarmers | Fighter | 2 | 2 | 4 | 2 shots, 50%, 1 dmg | 1 shot, 30%, 1 dmg | Very cheap |
+| Swarmers | Fighter | 2 | 2 | 6 | 2 shots, 50%, 1 dmg | 1 shot, 30%, 1 dmg | Very cheap |
 | Brute Gorers | Bomber | 4 | 4 | 3 | 1 shot, 30%, 1 dmg | 2 shots, 70%, 1 dmg, 15% crit | — |
 | Grunt Boarding Pod | Boarding | 2 | 1 | 4 | — | — | **Latch:** if it ends its move touching an enemy ship, at the end of the round that ship gets **1 critical**, then the pod is removed |
 
