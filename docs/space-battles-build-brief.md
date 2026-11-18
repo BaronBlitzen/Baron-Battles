@@ -1,5 +1,8 @@
 # Space Battles — Build Brief (Milestone 1)
 
+> **Done.** Milestones 1 and 2 are built and live. For the current work, use
+> [space-battles-build-brief-m3.md](space-battles-build-brief-m3.md). This file is kept as history.
+
 This file tells a new coding chat **what to build first** and **how it fits into this site**.
 
 - **Rules (source of truth):** [space-battles-rules.md](space-battles-rules.md). If this brief and the rules

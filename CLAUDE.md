@@ -76,6 +76,12 @@ phones need new info. Call `onExit('again' | 'menu')` from the results screen.
 Controller module: `export function mount({ container, me, sendInput })` returns
 `{ update(gameState, me), destroy() }`. Support arrow keys/WASD too, for laptop testing.
 
+## Space Battles
+
+The big game in progress (`js/games/space-battles/`). Rules: `docs/space-battles-rules.md`
+(source of truth; ⚠ items need the user's OK before building). Current work and how the code is
+organized: `docs/space-battles-build-brief-m3.md`. Milestones 1–2 are built and live.
+
 ## Testing locally
 
 - Run `powershell -ExecutionPolicy Bypass -File tools/serve.ps1 -Root .` in the background,

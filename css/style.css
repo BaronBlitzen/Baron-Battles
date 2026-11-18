@@ -240,3 +240,72 @@ body.phone #app { min-height: 100dvh; display: flex; }
 .sbp-target small { color: var(--muted); }
 .sbp-target.on { border-color: var(--accent); background: rgba(255,183,3,.15); }
 .sbp-target.cursor { outline: 2px dashed var(--muted); outline-offset: 2px; }
+
+/* ---------- Space Battles: fleet building, missions, surrender ---------- */
+.sb-missions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.sb-missions button { border: 2px solid var(--line); background: var(--bg2); color: var(--text); border-radius: 14px; padding: 10px 8px; display: grid; gap: 4px; cursor: pointer; text-align: center; }
+.sb-missions button b { font-size: 1.05rem; }
+.sb-missions button small { color: var(--muted); font-size: .8rem; }
+.sb-missions button.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.sb-missions button:disabled { opacity: .4; border-style: dashed; cursor: not-allowed; }
+.sb-share { margin: 0; font-weight: 800; font-size: 1rem !important; }
+.sb-plist li { display: grid; gap: 2px; }
+.sb-pname { display: flex; align-items: center; gap: 6px; }
+.sb-pname b, .sb-pname em { margin-left: auto; font-size: 1rem; }
+.sb-pts { font-size: .95rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sb-pts.red, .red { color: var(--red); }
+.sb-pships { font-size: .95rem; font-weight: 600; color: var(--muted); padding-left: 18px; }
+.sbp-budget { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.sbp-budget div { background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 8px 4px; display: grid; }
+.sbp-budget b { font-size: 1.4rem; }
+.sbp-budget small { color: var(--muted); }
+.sbp-budget.over div:first-child { border-color: var(--red); color: var(--red); }
+.sbp-shop { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.sbp-shop-item { background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; display: grid; gap: 6px; }
+.sbp-shop-item.open { border-color: var(--accent); }
+.sbp-shop-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; }
+.sbp-shop-top div { display: grid; gap: 2px; }
+.sbp-shop-top small { color: var(--muted); }
+.sbp-cost { font-weight: 900; font-size: 1.15rem; color: var(--accent); white-space: nowrap; }
+.sbp-desc { margin: 0; font-size: .92rem; }
+.sbp-arcs, .sbp-weapons { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .88rem; }
+.sbp-weapons li { background: var(--bg2); border-radius: 8px; padding: 6px 8px; }
+.sbp-weapons small { color: var(--muted); }
+.sbp-buy { border: 2px solid var(--accent); background: var(--accent); color: #1b1300; border-radius: 12px; padding: 10px; font-weight: 800; cursor: pointer; }
+.sbp-buy:disabled { background: var(--bg2); color: var(--muted); border-color: var(--line); cursor: not-allowed; }
+.sbp-surrender { margin: 0 14px 24px; padding: 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.sbp-sur-msg { margin: 0; padding: 8px 10px; border-radius: 10px; background: rgba(255,107,107,.12); border: 1px solid var(--red); font-weight: 700; }
+.sbp-sur-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sbp-sur-btn { border: 2px solid var(--line); background: var(--bg2); color: var(--muted); border-radius: 12px; padding: 10px; font-weight: 800; cursor: pointer; }
+.sbp-sur-btn.danger { border-color: var(--red); background: var(--red); color: #1a0505; }
+
+/* ---------- Space Battles: split fire, weapon effects ---------- */
+.sbp-weapon { display: grid; gap: 6px; padding: 6px 0 2px; border-top: 1px dashed var(--line); }
+.sbp-weapon:first-of-type { border-top: 0; }
+.sbp-weapon-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .95rem; }
+.sbp-once { font-size: .75rem; font-weight: 800; color: #ffd8a8; border: 1px solid #ff922b; border-radius: 999px; padding: 2px 8px; }
+.sbp-target.hold { font-weight: 600; color: var(--muted); padding: 6px 10px; }
+.sbp-target.hold.on { color: var(--text); }
+.sbp-status { font-size: .85rem; color: #ffd8a8; }
+
+/* ---------- Space Battles: stances ---------- */
+.sbp-stances { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sbp-stances button { border: 2px solid var(--line); background: var(--bg2); color: var(--text); border-radius: 12px; padding: 8px 4px; display: grid; gap: 2px; justify-items: center; font-size: .85rem; cursor: pointer; }
+.sbp-stances button.on { border-color: var(--accent); background: rgba(255,183,3,.15); }
+.sbp-stances button:disabled { opacity: .35; cursor: not-allowed; }
+.sbp-stances small { color: var(--muted); font-size: .7rem; }
+.sbp-st-icon { font-size: 1.3rem; }
+.sbp-st-desc { color: var(--muted); }
+.sbp-zones, .sbp-repair { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sbp-repair { grid-template-columns: repeat(3, 1fr); }
+.sbp-zones button, .sbp-repair button { border: 2px solid var(--line); background: var(--bg2); color: var(--text); border-radius: 10px; padding: 8px 4px; font-weight: 700; cursor: pointer; display: grid; gap: 2px; }
+.sbp-zones button.on, .sbp-repair button.on { border-color: var(--accent); background: rgba(255,183,3,.15); }
+.sbp-zones button:disabled, .sbp-repair button:disabled { opacity: .35; cursor: not-allowed; }
+.sbp-zones small { color: var(--muted); font-weight: 600; }
+.sbp-hunt { display: grid; gap: 6px; }
+
+/* Space Battles – squadrons in fleet building */
+.sbp-claims li.sbp-wingrow { display: grid; justify-content: stretch; gap: 6px; margin-top: -4px; border-style: dashed; padding: 8px 12px; }
+.sbp-claims li .sbp-wingchips, .sbp-claims li .sbp-wingbuy { display: flex; flex-wrap: wrap; gap: 6px; }
+.sbp-claims .sbp-wingbuy button, .sbp-claims .sbp-wingchips button { padding: 6px 10px; display: grid; gap: 0; text-align: center; }
+.sbp-claims .sbp-wingbuy button:disabled { opacity: .35; cursor: not-allowed; }
