@@ -173,14 +173,14 @@ export const SHIPS = {
     name: 'Strike Carrier', short: 'Carrier', faction: 'protectorate', class: 'cruiser', cost: 22,
     ratings: { o: 4, d: 4, m: 3, u: 5 },
     desc: 'The fleet\'s centerpiece. Launches 3 squadrons and backs them up with long-range railguns.',
-    hull: 10, shields: { front: 3, left: 3, right: 3, rear: 2 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 4,
+    hull: 8, shields: { front: 3, left: 3, right: 3, rear: 2 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 4,
     weapons: ['heavyRail', 'railBattery', 'ion'], pd: [pd('flak', 2)], squadrons: 3,
   },
   lancer: {
     name: 'Lancer', short: 'Lancer', faction: 'protectorate', class: 'cruiser', cost: 17,
     ratings: { o: 5, d: 3, m: 3 },
     desc: 'The hardest hitter in the fleet. Its spinal Particle Lance fires straight ahead at long range.',
-    hull: 9, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
+    hull: 8, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
     weapons: ['lance', 'heavyRail', 'railBattery'], pd: [pd('flak', 1)],
   },
   escort: {
@@ -203,14 +203,14 @@ export const SHIPS = {
     name: 'Queen', short: 'Queen', faction: 'djnzuar', class: 'battleship', cost: 22,
     ratings: { o: 1, d: 5, m: 1, u: 5 },
     desc: 'A huge, slow mother ship. Barely armed, but its brood of 4 squadrons does the fighting.',
-    hull: 20, shields: { front: 4, left: 3, right: 3, rear: 2 }, speed: [1, 2], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
+    hull: 12, shields: { front: 4, left: 3, right: 3, rear: 2 }, speed: [1, 2], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
     weapons: ['spine', 'spine', 'acid'], pd: [pd('thorn', 3)], squadrons: 4, carries: ['swarmers', 'latchers'],
   },
   brute: {
     name: 'Brute', short: 'Brute', faction: 'djnzuar', class: 'cruiser', cost: 16,
     ratings: { o: 4, d: 4, m: 2 },
     desc: 'A slow, armored bruiser. Harpoons enemies close, then unloads its plasma.',
-    hull: 13, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 5,
+    hull: 10, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 5,
     weapons: ['heavyPlasma', 'plasma', 'grapple', 'spine'], pd: [pd('thorn', 1)],
   },
   samurai: {

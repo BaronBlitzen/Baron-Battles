@@ -196,8 +196,8 @@ Gnasher, Ripper, Broodmaw, Dreadhulk, Corsair, Marauder, Freehold).
 
 | Ship | Class | O/D/M/U | Cost | Hull | Shields F/L/R/Rear | Speed | Clicks | ⚡ | Weapons (⚡ cost) | PD | Special |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Strike Carrier | Cruiser | 4/4/3/5 | 22 | 10 | 3/3/3/2 | 1–4 | 2 | 4 | Heavy Railgun Battery (3), Railgun Battery (2), Ion Cannon (1) | Flak 1×2 | **Carrier (3)** |
-| Lancer | Cruiser | 5/3/3/– | 17 | 9 | 3/2/2/1 | 1–4 | 2 | 6 | Particle Lance (4), Heavy Railgun Battery (3), Railgun Battery (2) | Flak 1×1 | — |
+| Strike Carrier | Cruiser | 4/4/3/5 | 22 | 8 | 3/3/3/2 | 1–4 | 2 | 4 | Heavy Railgun Battery (3), Railgun Battery (2), Ion Cannon (1) | Flak 1×2 | **Carrier (3)** |
+| Lancer | Cruiser | 5/3/3/– | 17 | 8 | 3/2/2/1 | 1–4 | 2 | 6 | Particle Lance (4), Heavy Railgun Battery (3), Railgun Battery (2) | Flak 1×1 | — |
 | Escort | Destroyer | 2/3/4/– | 11 | 7 | 2/2/2/1 | 2–4 | 3 | 3 | Railgun Battery (2), Railgun Battery (2), Ion Cannon (1) | Flak 1×3 | — |
 | Torpedo Boat | Corvette | 3/1/5/– | 9 | 4 | 1/1/1/0 | 2–5 | 3 | 2 | Torpedo Tubes (2), Railgun Battery (2) | — | — |
 
@@ -205,8 +205,8 @@ Gnasher, Ripper, Broodmaw, Dreadhulk, Corsair, Marauder, Freehold).
 
 | Ship | Class | O/D/M/U | Cost | Hull | Shields F/L/R/Rear | Speed | Clicks | ⚡ | Weapons (⚡ cost) | PD | Special |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Queen | Battleship | 1/5/1/5 | 22 | 20 | 4/3/3/2 | 1–2 | 1 | 2 | Spine Driver (1), Spine Driver (1), Acid Spitter (1) | Thorn 1×3 | **Carrier (4)**, Swarmers only |
-| Brute | Cruiser | 4/4/2/– | 16 | 13 | 3/2/2/1 | 1–3 | 1 | 5 | Heavy Plasma Battery (3), Plasma Battery (2), Grapple Harpoon (1), Spine Driver (1) | Thorn 1×1 | — |
+| Queen | Battleship | 1/5/1/5 | 22 | 12 | 4/3/3/2 | 1–2 | 1 | 2 | Spine Driver (1), Spine Driver (1), Acid Spitter (1) | Thorn 1×3 | **Carrier (4)**, Swarmers only |
+| Brute | Cruiser | 4/4/2/– | 16 | 10 | 3/2/2/1 | 1–3 | 1 | 5 | Heavy Plasma Battery (3), Plasma Battery (2), Grapple Harpoon (1), Spine Driver (1) | Thorn 1×1 | — |
 | Samurai | Destroyer | 4/2/4/– | 12 | 7 | 2/1/1/0 | 2–4 | 3 | 4 | Heavy Plasma Battery (3), Plasma Battery (2), Acid Spitter (1) | — | — |
 | Grunt | Corvette | 2/2/2/– | 6 | 5 | 1/1/1/0 | 1–3 | 1 | 2 | Plasma Battery (2), Spine Driver (1) | — | — |
 
@@ -250,6 +250,7 @@ speed (after a Full Burn) a ship uses its top-speed number. Stances still apply 
 - **Autocannon Turret:** 1×2 → **1×3**.
 - **Pirate costs −2:** Firefly 8, Rouge 9, Free Trader 11, Outrider 12.
 - **Grunt hull:** 5 → **3**.
+- **Big ships closer to Armada hull:** Strike Carrier 10 → **8**, Lancer 9 → **8**, Brute 13 → **10**, Queen 20 → **12**.
 
 ### Special abilities
 
