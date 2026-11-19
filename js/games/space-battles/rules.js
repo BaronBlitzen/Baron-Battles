@@ -429,7 +429,7 @@ export function stanceOptions(ship) {
 
 // ---------- Power and firing (weapons v2) ----------
 // Power this ship has to fire weapons this round: its own Power, changed by its stance
-// (Overcharge +2, Brace / Damage Control −1, Evasive −2) and Weapons Offline (−2 each).
+// (Overcharge +2, Brace / Damage Control −1, Maneuvering Thrusters (evasive) −1) and Weapons Offline (−2 each).
 // Full Burn can't fire at all. Never below 0.
 export function shipPower(ship) {
   const st = stanceOf(ship);

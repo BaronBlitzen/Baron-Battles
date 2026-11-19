@@ -194,9 +194,9 @@ Movement). Stances are revealed on the TV when the Move starts. A stance lasts t
 | Class | Stances (besides Balanced) |
 |---|---|
 | Squadrons | None (automatic) |
-| Corvette | Evasive, Full Burn, Hunter, Overcharge |
-| Destroyer | Evasive, Full Burn, Hunter, Shield Charge |
-| Cruiser | Brace, Shield Charge, Evasive, Overcharge, Damage Control |
+| Corvette | Maneuvering Thrusters, Full Burn, Hunter, Overcharge, Damage Control |
+| Destroyer | Maneuvering Thrusters, Full Burn, Hunter, Shield Charge, Damage Control |
+| Cruiser | Brace, Shield Charge, Maneuvering Thrusters, Overcharge, Damage Control |
 | Battleship | Brace, Shield Charge, Overcharge, Damage Control, Hunter |
 
 ### Stance details (decided)

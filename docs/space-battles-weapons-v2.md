@@ -115,11 +115,13 @@ Only the parts that talk about shots or arcs change. Everything else stays as in
 | Stance | Old | New |
 |---|---|---|
 | **Brace** | −1 shot on every arc | **−1 Power** |
-| **Evasive** | Fire from only 1 arc; long-range attacks vs you −1 shot | **−2 Power**; you get **+1 agility** |
+| **Maneuvering Thrusters** (was Evasive) | Fire from only 1 arc; long-range attacks vs you −1 shot | **−1 Power**; you get **+1 agility** and +1 turn click |
 | **Overcharge** | +1 shot on every weapon | **+2 Power** |
 | **Damage Control** | −1 shot on every arc | **−1 Power** |
 | **Hunter** | +1 shot and reroll misses vs the marked ship | Hit the marked ship on **one lower** (3+ vs agility 0) |
 | **Full Burn** | Can't fire | No change (can't fire) |
+
+- ✅ **Every class can use Damage Control** (corvettes and destroyers too), so a ship whose Power drops to 0 from Weapons Offline can always repair it.
 
 ## Keywords ✅
 

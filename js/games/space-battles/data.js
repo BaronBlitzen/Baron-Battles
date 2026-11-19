@@ -15,7 +15,7 @@ export const FACTIONS = {
     available: true,
     blurb: 'Strike carriers, long-range guns, fast escorts',
     edge: 'west', // deployment edge (null = whichever edge is free)
-    // Trained helms: +1 extra turn click when using Evasive or Full Burn.
+    // Trained helms: +1 extra turn click when using Maneuvering Thrusters or Full Burn.
     // Hangar repair: at the end of the round, squadrons docked in their living carrier
     // restore `hangarRepair` hull (not above max).
     traits: { ram: null, home: null, trainedHelms: 1, repair: null, hangarRepair: 1 },
@@ -340,13 +340,13 @@ export const STANCES = {
     halveDamage: true, powerChange: -1, maxClicks: 1 },
   shieldCharge: { name: 'Shield Charge', icon: '⚡', desc: 'Pick a zone: +2 shields there this round. The opposite zone\'s shields count as 0.',
     chargeShields: 2, needsZone: true },
-  evasive: { name: 'Evasive', icon: '💨', desc: '+1 turn click and +1 agility (harder to hit). −2 Power.',
-    extraClicks: 1, agility: 1, powerChange: -2, helms: true },
+  evasive: { name: 'Maneuvering Thrusters', icon: '💨', desc: '+1 turn click and +1 agility (harder to hit). −1 Power.',
+    extraClicks: 1, agility: 1, powerChange: -1, helms: true },
   fullBurn: { name: 'Full Burn', icon: '🔥', desc: 'Change speed by up to 2, up to 1 over max. Can\'t fire; rear shields count as 0.',
     speedChange: 2, overMax: 1, noFire: true, rearShieldsOff: true, helms: true },
   overcharge: { name: 'Overcharge', icon: '💥', desc: '+2 Power. Attacks against you deal +1 damage. Can\'t change speed.',
     powerChange: 2, damageTakenBonus: 1, holdSpeed: true },
-  hunter: { name: 'Hunter', icon: '🎯', desc: 'Mark an enemy ship: you hit it on one lower, and its Evasive doesn\'t help against you. You may only attack it.',
+  hunter: { name: 'Hunter', icon: '🎯', desc: 'Mark an enemy ship: you hit it on one lower, and its Maneuvering Thrusters don\'t help against you. You may only attack it.',
     needsTarget: true, huntHit: 1 },
   damageControl: { name: 'Damage Control', icon: '🔧', desc: 'End of round: restore 2 shields or 1 hull, or remove 1 critical. Must slow down by 1; −1 Power.',
     powerChange: -1, mustSlow: true, repair: { shields: 2, hull: 1, alsoRemoveCrit: false } },
@@ -355,8 +355,8 @@ export const STANCE_ORDER = ['balanced', 'brace', 'shieldCharge', 'evasive', 'fu
 
 // Stances each class may use (Balanced is always allowed).
 export const CLASS_STANCES = {
-  corvette: ['evasive', 'fullBurn', 'hunter', 'overcharge'],
-  destroyer: ['evasive', 'fullBurn', 'hunter', 'shieldCharge'],
+  corvette: ['evasive', 'fullBurn', 'hunter', 'overcharge', 'damageControl'],
+  destroyer: ['evasive', 'fullBurn', 'hunter', 'shieldCharge', 'damageControl'],
   cruiser: ['brace', 'shieldCharge', 'evasive', 'overcharge', 'damageControl'],
   battleship: ['brace', 'shieldCharge', 'overcharge', 'damageControl', 'hunter'],
 };

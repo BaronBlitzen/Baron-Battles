@@ -155,7 +155,7 @@ const BAND = Object.fromEntries(RANGE_BANDS.map((b, i) => [b.id, i]));
 // Faction traits shown on every ship of that faction.
 const TRAITS = {
   protectorate: (def) => [
-    { icon: '↻', name: 'Trained Helms', text: '+1 extra turn click when using Evasive or Full Burn.' },
+    { icon: '↻', name: 'Trained Helms', text: '+1 extra turn click when using Maneuvering Thrusters or Full Burn.' },
     ...(def.squadrons ? [{ icon: '🔧', name: 'Hangar Repair', text: 'Squadrons docked here restore 1 hull at the end of each round.' }] : []),
   ],
   djnzuar: () => [
