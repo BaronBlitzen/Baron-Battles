@@ -1088,12 +1088,8 @@ export function simulateMove(ships, plans, scenario) {
       x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2, damage: [] };
     if (isEnemy(A, B)) {
       const ramA = FACTIONS[A.faction].traits.ram, ramB = FACTIONS[B.faction].traits.ram;
-      let toB = ramA ? shipDef(A).ramDamage ?? ramA.enemyDamage : MOVE.enemyCollisionDamage;
-      let toA = ramB ? shipDef(B).ramDamage ?? ramB.enemyDamage : ramA ? ramA.selfDamage : MOVE.enemyCollisionDamage;
-      // Jurddap's Headbutt: more damage to the enemy, none to his own ship.
-      const hbA = captainOf(A)?.headbutt || 0, hbB = captainOf(B)?.headbutt || 0;
-      if (hbA) { toB += hbA; toA = 0; }
-      if (hbB) { toA += hbB; toB = 0; }
+      const toB = ramA ? shipDef(A).ramDamage ?? ramA.enemyDamage : MOVE.enemyCollisionDamage;
+      const toA = ramB ? shipDef(B).ramDamage ?? ramB.enemyDamage : ramA ? ramA.selfDamage : MOVE.enemyCollisionDamage;
       ev.ram = !!(ramA || ramB);
       if (toA > 0) ev.damage.push(hit(A, pb.x, pb.y, toA));
       if (toB > 0) ev.damage.push(hit(B, pa.x, pa.y, toB));

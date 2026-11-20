@@ -377,7 +377,7 @@ export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targ
 //   pickCrit      – the player picks which system this ship's criticals damage (in Plan Fire)
 //   fireRotate    – may rotate this many clicks in place during Plan Fire (before shooting)
 //   hull / speed / clicks – + max hull, + max speed, + turn clicks per segment
-//   headbutt      – when this ship collides with an enemy ship: + this much ram damage, and it takes none
+//   fireproof     – Hull Fire never damages this ship (it can still catch the critical)
 //   packLeader    – { types, accuracy, range }: the side's OTHER ships of `types` within `range`
 //                   (a RANGE_BANDS id) of this ship get + accuracy (several leaders don't stack)
 export const CAPTAINS = {
@@ -393,8 +393,8 @@ export const CAPTAINS = {
     desc: 'This Fighter squadron gets +1 accuracy, and the first hit on it each round is ignored.' },
   golbrik: { name: 'Golbrik', short: 'Golbrik', icon: '💥', cost: 2, ships: ['grunt'], stance: 'reckless',
     desc: 'Unlocks the Reckless Attack stance: take 1 hull damage, and all your weapons fire twice that round (no extra Power).' },
-  jurddap: { name: 'Jurddap', short: 'Jurddap', icon: '🐸', cost: 2, ships: ['grunt'], headbutt: 2,
-    desc: 'Headbutt: when this ship rams an enemy ship, the enemy takes 2 extra damage and this ship takes no damage.' },
+  jurddap: { name: 'Jurddap', short: 'Jurddap', icon: '🐸', cost: 1, ships: ['grunt'], hull: 1, fireproof: true,
+    desc: 'Shrug It Off: +1 hull, and Hull Fire never hurts this ship.' },
   bossim: { name: 'Bossim', short: 'Bossim', icon: '🪖', cost: 3, ships: ['grunt'], packLeader: { types: ['grunt'], accuracy: 1, range: 'medium' },
     desc: 'Pack Leader: your side\'s other Grunts within medium range of this ship get +1 accuracy.' },
   seirSeir: { name: 'Seir-Seir', short: 'Seir-Seir', icon: '🗡', cost: 2, ships: ['samurai'], pickCrit: true,

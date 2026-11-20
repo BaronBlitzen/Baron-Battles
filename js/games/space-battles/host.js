@@ -932,9 +932,9 @@ export function start({ container, players, setPhoneState, onExit }) {
         tag(t.id, c ? `📦 fixed ${CRITICALS[c.id]?.name || 'a critical'}` : '📦 Nothing to fix', '#8ce99a', acidAt);
       }
     }
-    // Hull Fire: 1 hull damage (caught before this round), ignoring shields.
+    // Hull Fire: 1 hull damage (caught before this round), ignoring shields. Jurddap is fireproof.
     for (const s of next) {
-      if (!critCount(s, 'hull') || s.hull <= 0) continue;
+      if (!critCount(s, 'hull') || s.hull <= 0 || captainOf(s)?.fireproof) continue;
       endOfRound = true;
       const d = applyHullDamage(s, CRITICALS.hull.burn);
       pending.push({ at: acidAt, ...d });
