@@ -15,9 +15,10 @@ import {
   carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf,
   captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
 } from './rules.js';
+import { faceImg } from './portraits.js';
 
-// "🛡 Samuel Verity" style captain tag (empty without a captain).
-const captainTag = (u) => { const c = captainOf(u); return c ? `${c.icon} ${c.name}` : ''; };
+// Captain's face + name, as HTML (empty without a captain).
+const captainHtml = (u) => { const c = captainOf(u); return c ? `${faceImg(u.captain, 22)} ${escapeHtml(c.name)}` : ''; };
 
 const BAND_INDEX = Object.fromEntries(RANGE_BANDS.map((b, i) => [b.id, i]));
 // "Reach ●●○" style dots for a weapon (filled up to its reach).
@@ -119,7 +120,7 @@ export function mount({ container, me, sendInput }) {
       const st = STANCES[s.stance.id];
       out.push(`Stance this round: ${s.stance.wild ? `${STANCES.wild.icon} ${STANCES.wild.name} + ` : ''}${st.icon} ${escapeHtml(st.name)}${s.stance.zone ? ` (${ZONE_NAMES[s.stance.zone]})` : ''}`);
     }
-    if (captainOf(s)) out.push(`${escapeHtml(captainTag(s))}: ${escapeHtml(captainOf(s).desc)}`);
+    if (captainOf(s)) out.push(`${captainHtml(s)}:${escapeHtml(captainOf(s).desc)}`);
     for (const c of s.crits || []) {
       const cd = CRITICALS[c.id];
       if (!cd) continue;
@@ -247,12 +248,12 @@ export function mount({ container, me, sendInput }) {
     const act = squad ? 'squadCaptain' : 'captain';
     return `
       <li class="sbp-wingrow">
-        <small>${squad ? `${escapeHtml(SQUADRONS[type].short)} squadron captain` : 'Captain'}${cur ? `: <b>${escapeHtml(CAPTAINS[cur].icon)} ${escapeHtml(CAPTAINS[cur].name)}</b> · ${escapeHtml(CAPTAINS[cur].desc)}` : ' (optional upgrade)'}</small>
+        <small>${squad ? `${escapeHtml(SQUADRONS[type].short)} squadron captain` : 'Captain'}${cur ? `: <b>${faceImg(cur, 28)} ${escapeHtml(CAPTAINS[cur].name)}</b> · ${escapeHtml(CAPTAINS[cur].desc)}` : ' (optional upgrade)'}</small>
         <div class="sbp-wingbuy">
           ${cur ? `<button data-act="${act}" data-i="${i}"${k} data-c="">No captain<small>−${CAPTAINS[cur].cost} pts</small></button>` : ''}
           ${choices.filter((c) => c !== cur).map((c) => {
             const p = captainProblem(c, info.mine, i, info.share, slot);
-            return `<button data-act="${act}" data-i="${i}"${k} data-c="${c}" ${p ? 'disabled' : ''} title="${escapeHtml(CAPTAINS[c].desc)}">${escapeHtml(CAPTAINS[c].icon)} ${escapeHtml(CAPTAINS[c].short)}<small>${CAPTAINS[c].cost} pts</small></button>`;
+            return `<button data-act="${act}" data-i="${i}"${k} data-c="${c}" ${p ? 'disabled' : ''} title="${escapeHtml(CAPTAINS[c].desc)}">${faceImg(c, 48)}${escapeHtml(CAPTAINS[c].short)}<small>${CAPTAINS[c].cost} pts</small></button>`;
           }).join('')}
         </div>
         ${!cur ? `<small class="muted">${choices.map((c) => `${escapeHtml(CAPTAINS[c].short)}: ${escapeHtml(CAPTAINS[c].desc)}`).join('<br>')}</small>` : ''}
@@ -266,7 +267,7 @@ export function mount({ container, me, sendInput }) {
     return `
       <li class="sbp-wingrow">
         <small>Squadrons ${e.wing.length}/${slots}${e.wing.length ? ' · tap one to remove it' : ''}</small>
-        ${e.wing.length ? `<div class="sbp-wingchips">${e.wing.map((q, k) => `<button data-act="removeSquad" data-i="${i}" data-k="${k}">${escapeHtml(SQUADRONS[q].short)}${e.wingCaptains?.[k] ? ` ${escapeHtml(CAPTAINS[e.wingCaptains[k]].icon)}` : ''} ✕</button>`).join('')}</div>` : ''}
+        ${e.wing.length ? `<div class="sbp-wingchips">${e.wing.map((q, k) => `<button data-act="removeSquad" data-i="${i}" data-k="${k}">${escapeHtml(SQUADRONS[q].short)}${e.wingCaptains?.[k] ? ` ${faceImg(e.wingCaptains[k], 20)}` : ''} ✕</button>`).join('')}</div>` : ''}
         ${e.wing.length < slots ? `<div class="sbp-wingbuy">${carrierSquadTypes(e.type).map((t) => {
           const p = squadBuyProblem(t, info.myTeam, info.mine, i, info.share);
           return `<button data-act="buySquad" data-i="${i}" data-t="${t}" ${p ? 'disabled' : ''}>+ ${escapeHtml(SQUADRONS[t].short)}<small>${SQUADRONS[t].cost} pts</small></button>`;
@@ -549,7 +550,7 @@ export function mount({ container, me, sendInput }) {
     if (st.squadAccuracy) notes.push(`your squadrons +${st.squadAccuracy} accuracy`);
     if (st.doubleWeapons) notes.push(st.doubleWeapons === 'all' ? 'every weapon fires twice' : `${st.doubleWeapons.map((w) => WEAPONS[w].name).join(', ')} fires twice`);
     const name = `${s.stance?.wild ? `${STANCES.wild.name} + ` : ''}${st.name}`;
-    const amelia = captainOf(s)?.alwaysCommand ? `<p class="sbp-burn">${escapeHtml(captainTag(s))}: your squadrons always get +${STANCES.command.squadAccuracy} accuracy.</p>` : '';
+    const amelia = captainOf(s)?.alwaysCommand ? `<p class="sbp-burn">${captainHtml(s)}:your squadrons always get +${STANCES.command.squadAccuracy} accuracy.</p>` : '';
     const pd = shipDef(s).pd.length
       ? '<p class="sbp-small muted">Point-defense is free and fires on its own (yellow on the TV) at the nearest enemy squadron in close range.</p>' : '';
     return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + amelia + pd;
@@ -561,7 +562,7 @@ export function mount({ container, me, sendInput }) {
     const cur = critDraft[s.id] || '';
     return `
       <div class="sbp-arc on">
-        <div class="sbp-arc-head"><b>${escapeHtml(captainTag(s))}</b><small>your criticals this round hit…</small></div>
+        <div class="sbp-arc-head"><b>${captainHtml(s)}</b><small>your criticals this round hit…</small></div>
         <div class="sbp-hunt">
           <button class="sbp-target ${cur ? '' : 'on'}" data-act="critPick" data-c=""><span>🎲 Random</span><span>${cur ? '' : '✔'}</span></button>
           ${CRIT_POOL.map((id) => `<button class="sbp-target ${cur === id ? 'on' : ''}" data-act="critPick" data-c="${id}"><span>${CRITICALS[id].icon} ${escapeHtml(CRITICALS[id].name)}</span><span>${cur === id ? '✔' : ''}</span></button>`).join('')}

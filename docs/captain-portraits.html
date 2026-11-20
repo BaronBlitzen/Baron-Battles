@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Captain Portraits</title>
+<style>
+  body { margin: 0; padding: 24px 16px; background: #1b2a47; color: #e9eef7; font-family: system-ui, sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  h2 { font-size: 17px; margin: 24px 0 10px; }
+  .prot h2 { color: #4dabf7; } .djn h2 { color: #ff922b; }
+  p.note { margin: 0 0 8px; color: #a9b6cc; font-size: 14px; max-width: 700px; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; }
+  .card { background: #13203a; border-radius: 8px; padding: 12px; text-align: center; width: 250px; }
+  .pics { display: flex; align-items: flex-end; justify-content: center; gap: 12px; margin-bottom: 8px; }
+  canvas { image-rendering: pixelated; background: #0c1528; border-radius: 4px; }
+  .card b { display: block; font-size: 14px; }
+  .card span { font-size: 12px; color: #a9b6cc; }
+</style>
+</head>
+<body>
+<h1>Captain portraits</h1>
+<p class="note">Drawn from <code>js/games/space-battles/portraits.js</code>. 24×24 pixels each.
+Big = 8× size, small = 2×. Jurddap and Bossim aren't Captains in the game yet.</p>
+<div class="prot"><h2>Human Protectorate</h2><div class="row" id="prot"></div></div>
+<div class="djn"><h2>Djn'zuar</h2><div class="row" id="djn"></div></div>
+<script type="module">
+  import { PORTRAITS, PORTRAIT_SIZE, drawPortrait } from '../js/games/space-battles/portraits.js';
+  import { CAPTAINS } from '../js/games/space-battles/data.js';
+
+  const EXTRA = { jurddap: 'Jurddap (Grunt, not built yet)', bossim: 'Bossim (Grunt, not built yet)' };
+  const PROT = ['shuna', 'verity', 'shrike', 'amelia', 'flaggs', 'kairos'];
+
+  function draw(id, scale) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = PORTRAIT_SIZE * scale;
+    drawPortrait(cv.getContext('2d'), id, 0, 0, scale);
+    return cv;
+  }
+
+  for (const [id, rows] of Object.entries(PORTRAITS)) {
+    rows.forEach((r, i) => { if (r.length !== PORTRAIT_SIZE) console.warn(id, 'row', i, 'is', r.length, 'wide'); });
+    if (rows.length !== PORTRAIT_SIZE) console.warn(id, 'has', rows.length, 'rows');
+    const card = document.createElement('div');
+    card.className = 'card';
+    const pics = document.createElement('div');
+    pics.className = 'pics';
+    pics.append(draw(id, 8), draw(id, 2));
+    card.append(pics);
+    const cap = CAPTAINS[id];
+    card.insertAdjacentHTML('beforeend', cap ? `<b>${cap.name}</b><span>${cap.desc}</span>` : `<b>${EXTRA[id] || id}</b>`);
+    document.getElementById(PROT.includes(id) ? 'prot' : 'djn').append(card);
+  }
+</script>
+</body>
+</html>

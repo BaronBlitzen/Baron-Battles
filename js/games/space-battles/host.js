@@ -18,6 +18,10 @@ import {
   captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName, sanitizeRotate, rotatedShip,
 } from './rules.js';
 import { spriteCanvas, spriteSize } from './sprites.js';
+import { faceImg } from './portraits.js';
+
+// " [face] Shrike" after a ship or squadron in the fleet list (empty without a captain).
+const capFace = (id) => (CAPTAINS[id] ? ` ${faceImg(id, 26)} ${escapeHtml(CAPTAINS[id].short)}` : '');
 
 const PHASE_NAMES = {
   setup: 'Fleet Setup', intro: 'Battle stations', planMove: 'Plan Movement', move: 'Move',
@@ -434,7 +438,7 @@ export function start({ container, players, setPhoneState, onExit }) {
                       return `<li><div class="sb-pname"><span class="dot" style="background:${colorOf(id)}"></span>${escapeHtml(nameOf(id))}
                         <span class="sb-pts ${overBudget(id) ? 'red' : ''}">${spentOf(id)}/${share}</span>
                         ${!online.has(id) ? '<em class="muted">offline</em>' : ready[id] ? '<b class="green">✔ Ready</b>' : ''}</div>
-                        ${mine.length ? `<div class="sb-pships">${mine.map((e) => escapeHtml(SHIPS[e.type].short + (e.captain ? ` [${CAPTAINS[e.captain].short}]` : '') + (e.wing.length ? ` (${e.wing.map((q, k) => SQUADRONS[q].short + (e.wingCaptains?.[k] ? ` [${CAPTAINS[e.wingCaptains[k]].short}]` : '')).join(', ')})` : ''))).join(' · ')}</div>` : ''}</li>`;
+                        ${mine.length ? `<div class="sb-pships">${mine.map((e) => escapeHtml(SHIPS[e.type].short) + capFace(e.captain) + (e.wing.length ? ` (${e.wing.map((q, k) => escapeHtml(SQUADRONS[q].short) + capFace(e.wingCaptains?.[k])).join(', ')})` : '')).join(' · ')}</div>` : ''}</li>`;
                     }).join('') : '<li class="muted">No players yet</li>'}
                   </ul>` : '<p class="sb-soon">Coming soon</p>'}
               </div>`;

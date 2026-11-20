@@ -91,6 +91,8 @@ The Protectorate and Djn'zuar rework (ships, weapons, squadrons, stances, critic
 `data.js` (one per ship, bought in fleet building). Duplicate ship types on a side get letters (Escort A, B).
 Ships and squadron craft are pixel-art sprites in `sprites.js` (letter grids, nose up, keyed by ship/squadron
 id; preview at `docs/ship-sprites.html`). Pirates have no sprites yet and still use the old outline shapes.
+Captain faces are 24×24 pixel-art portraits in `portraits.js` (keyed by Captain id; `faceImg(id, px)` gives an
+`<img>`; preview at `docs/captain-portraits.html`). Djn'zuar look: `docs/djnzuar-concept.html`.
 
 ## Testing locally
 

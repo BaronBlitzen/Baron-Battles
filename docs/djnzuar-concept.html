@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Djn'zuar Concept</title>
+<style>
+  body { margin: 0; padding: 24px 16px; background: #1b2a47; color: #e9eef7; font-family: system-ui, sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 22px; color: #ff922b; }
+  p { margin: 0 0 16px; color: #a9b6cc; font-size: 14px; max-width: 640px; }
+  canvas { image-rendering: pixelated; background: #0c1528; border-radius: 6px; max-width: 100%; }
+</style>
+</head>
+<body>
+<h1>Djn'zuar concept (draft)</h1>
+<p>Side view, facing right. Part alligator (long toothy snout), part dinosaur (spiky back plates),
+part insect (antenna, glowing compound eye, mandible at the jaw). 32×24 pixels, shown at 12×.</p>
+<canvas id="cv"></canvas>
+<script type="module">
+  import { PALETTE } from '../js/games/space-battles/sprites.js';
+  const PAL = { ...PALETTE, k: '#14161c' };
+  const rows = [
+    '......O.........................',
+    '.....OO.O.............M.........',
+    '.....OOOO............d..........',
+    '....OOOOHHHHHHHH....d...........',
+    '....OOHHHHHHHHHHHHHd............',
+    '...OOHHHOOdOOdOOHHHH............',
+    '...OHHHOOOdOOdOOOOOOH...........',
+    '..OOHHHHHHHHHHHHHHMMPH..........',
+    '..OHHHHHHHHHHHHHHHMMMHH.........',
+    '.OOHHHHHHHHHHHHHHHHHHHHHHh......',
+    '.OHHhHHHHHHHHHHHHHHHHHHHHHHHh...',
+    'OOHHhHHHHHHHHHHHHHHHHHHHHHHHkHh.',
+    'OHHHHhHHHHHHHHHHHHHHHHHHHHHHHHHh',
+    'OHHHHhHHHHHHHHdWdWdWdWdWdWdWdWWd',
+    'OHHHHHhHHHHOdddWdWdWdWdWdWdWdd..',
+    'HHHHHHhHHHOOhHHHHHHHHHHHHHHh....',
+    'HHHHHHHhHOO.hhhhhhhhhhhhhhh.....',
+    'HHHHHHHhOO......................',
+    'OOOOOdOOOOOd....................',
+    'OOOOOdOOOOOOdOO.................',
+    'OMOOOdOOMOOOOdOOO...............',
+    'OOOOOdOOOOOOOOdOOOO.............',
+    'OOOOOdOOOOOOOOOdOOOOO...........',
+    'OOOOOdOOOOOOOOOOdOOOOOO.........',
+  ];
+  rows.forEach((r, i) => { if (r.length !== 32) console.warn('row', i, 'is', r.length, 'wide'); });
+  const S = 12, cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  cv.width = 32 * S; cv.height = rows.length * S;
+  rows.forEach((r, y) => [...r].forEach((ch, x) => {
+    if (!PAL[ch]) return;
+    ctx.fillStyle = PAL[ch];
+    ctx.fillRect(x * S, y * S, S, S);
+  }));
+</script>
+</body>
+</html>
