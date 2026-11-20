@@ -190,7 +190,22 @@ export function agilityOf(target) {
   return (classOf(target).agility || 0) + (stanceOf(target).agility || 0);
 }
 
-// `ships` is only needed for squadrons (to find the carrier's Command stance).
+// Bossim's Pack Leader: the best bonus from a living friendly leader (not the attacker itself)
+// within range of the attacker, if the attacker's ship type is one it leads. `units` may also
+// hold squadrons (they're skipped).
+export function packBonus(attacker, units = []) {
+  let best = 0;
+  for (const u of units) {
+    const pl = captainOf(u)?.packLeader;
+    if (!pl || isSquad(u) || !u.alive || u.id === attacker.id || isEnemy(u, attacker) || !pl.types.includes(attacker.type)) continue;
+    const max = RANGE_BANDS.find((b) => b.id === pl.range)?.max ?? 0;
+    if (unitDistance(u, attacker) <= max) best = Math.max(best, pl.accuracy);
+  }
+  return best;
+}
+
+// `ships` = the units on the map: squadrons need it for the carrier's Command stance, ships for
+// Pack Leader.
 export function accuracyOf(attacker, ships = []) {
   if (isSquad(attacker)) {
     let a = (squadDef(attacker).accuracy || 0) + (captainOf(attacker)?.accuracy || 0);
@@ -199,7 +214,7 @@ export function accuracyOf(attacker, ships = []) {
     if (c?.alive) a += Math.max(stanceOf(c).squadAccuracy || 0, captainOf(c)?.alwaysCommand ? STANCES.command.squadAccuracy : 0);
     return a;
   }
-  return stanceOf(attacker).accuracy || 0;
+  return (stanceOf(attacker).accuracy || 0) + packBonus(attacker, ships);
 }
 
 export function needToHit(attacker, wd, target, ships = []) {
@@ -218,10 +233,10 @@ const bandIndex = (band) => RANGE_BANDS.findIndex((b) => b.id === band);
 export const inReach = (wd, band) => !!band && bandIndex(band) <= bandIndex(wd.reach);
 
 // Chance one shot of `wd` from `attacker` hits `target` at `band` (0 if it can't fire at it).
-export function hitChance(attacker, wd, band, target) {
+export function hitChance(attacker, wd, band, target, units = []) {
   if (!inReach(wd, band)) return 0;
   if (isSquad(target) && wd.noSquadrons) return 0;
-  return chanceOf(needToHit(attacker, wd, target));
+  return chanceOf(needToHit(attacker, wd, target, units));
 }
 
 // Carrier capacity (0 for ships that aren't carriers).
@@ -571,9 +586,9 @@ export function planPower(ship, plan) {
 // only strips shields, so the phone labels it as shield damage. A Disruptor hit (a critical) is
 // counted as 2. Criticals are otherwise left out.
 export const CRIT_VALUE = 2;
-export function expectedWeaponDamage(ship, w, band, target) {
+export function expectedWeaponDamage(ship, w, band, target, units = []) {
   const wd = WEAPONS[w.weapon];
-  return weaponRepeats(ship, w) * w.shots * hitChance(ship, wd, band, target) * (wd.effect === 'crit' ? CRIT_VALUE : wd.damage);
+  return weaponRepeats(ship, w) * w.shots * hitChance(ship, wd, band, target, units) * (wd.effect === 'crit' ? CRIT_VALUE : wd.damage);
 }
 
 // A weapon knocked out by a Weapons Systems critical.
@@ -591,9 +606,9 @@ export function weaponTargets(ship, arc, wi, units, asteroids) {
     if (!t.alive || t.docked || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
     const dist = unitDistance(ship, t);
     const band = rangeBand(dist);
-    if (!hitChance(ship, wd, band, t)) continue;
+    if (!hitChance(ship, wd, band, t, units)) continue;
     if (!isSquad(t) && !lineOfSight(ship, t, asteroids)) continue;
-    out.push({ id: t.id, dist, band, squad: isSquad(t), need: needToHit(ship, wd, t), expected: expectedWeaponDamage(ship, w, band, t) });
+    out.push({ id: t.id, dist, band, squad: isSquad(t), need: needToHit(ship, wd, t, units), expected: expectedWeaponDamage(ship, w, band, t, units) });
   }
   return out.sort((a, b) => a.dist - b.dist);
 }
@@ -1073,10 +1088,15 @@ export function simulateMove(ships, plans, scenario) {
       x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2, damage: [] };
     if (isEnemy(A, B)) {
       const ramA = FACTIONS[A.faction].traits.ram, ramB = FACTIONS[B.faction].traits.ram;
-      const toB = ramA ? shipDef(A).ramDamage ?? ramA.enemyDamage : MOVE.enemyCollisionDamage;
-      const toA = ramB ? shipDef(B).ramDamage ?? ramB.enemyDamage : ramA ? ramA.selfDamage : MOVE.enemyCollisionDamage;
+      let toB = ramA ? shipDef(A).ramDamage ?? ramA.enemyDamage : MOVE.enemyCollisionDamage;
+      let toA = ramB ? shipDef(B).ramDamage ?? ramB.enemyDamage : ramA ? ramA.selfDamage : MOVE.enemyCollisionDamage;
+      // Jurddap's Headbutt: more damage to the enemy, none to his own ship.
+      const hbA = captainOf(A)?.headbutt || 0, hbB = captainOf(B)?.headbutt || 0;
+      if (hbA) { toB += hbA; toA = 0; }
+      if (hbB) { toA += hbB; toB = 0; }
       ev.ram = !!(ramA || ramB);
-      ev.damage.push(hit(A, pb.x, pb.y, toA), hit(B, pa.x, pa.y, toB));
+      if (toA > 0) ev.damage.push(hit(A, pb.x, pb.y, toA));
+      if (toB > 0) ev.damage.push(hit(B, pa.x, pa.y, toB));
     }
     events.push(ev);
   }

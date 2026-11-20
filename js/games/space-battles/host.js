@@ -698,7 +698,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     const wd = WEAPONS[w.weapon];
     const band = rangeBand(unitDistance(s, t));
     const sq = isSquad(t);
-    const need = needToHit(s, wd, t);
+    const need = needToHit(s, wd, t, ships);
     const r = rollShots(shots, need, critOnOf(s, wd), !sq && !wd.pd);
     return {
       band, shots, need, hits: r.hits, crits: r.crits, perHit: wd.damage, ignoreShields: !!wd.ignoreShields,

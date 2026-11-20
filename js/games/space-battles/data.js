@@ -377,6 +377,9 @@ export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targ
 //   pickCrit      – the player picks which system this ship's criticals damage (in Plan Fire)
 //   fireRotate    – may rotate this many clicks in place during Plan Fire (before shooting)
 //   hull / speed / clicks – + max hull, + max speed, + turn clicks per segment
+//   headbutt      – when this ship collides with an enemy ship: + this much ram damage, and it takes none
+//   packLeader    – { types, accuracy, range }: the side's OTHER ships of `types` within `range`
+//                   (a RANGE_BANDS id) of this ship get + accuracy (several leaders don't stack)
 export const CAPTAINS = {
   shuna: { name: 'Shuna, Dolphin Warrior', short: 'Shuna', icon: '🐬', cost: 2, ships: ['torpedoBoat'], freeWild: true,
     desc: 'Every round you may use Wild Maneuvers AND another stance.' },
@@ -390,6 +393,10 @@ export const CAPTAINS = {
     desc: 'This Fighter squadron gets +1 accuracy, and the first hit on it each round is ignored.' },
   golbrik: { name: 'Golbrik', short: 'Golbrik', icon: '💥', cost: 2, ships: ['grunt'], stance: 'reckless',
     desc: 'Unlocks the Reckless Attack stance: take 1 hull damage, and all your weapons fire twice that round (no extra Power).' },
+  jurddap: { name: 'Jurddap', short: 'Jurddap', icon: '🐸', cost: 2, ships: ['grunt'], headbutt: 2,
+    desc: 'Headbutt: when this ship rams an enemy ship, the enemy takes 2 extra damage and this ship takes no damage.' },
+  bossim: { name: 'Bossim', short: 'Bossim', icon: '🪖', cost: 3, ships: ['grunt'], packLeader: { types: ['grunt'], accuracy: 1, range: 'medium' },
+    desc: 'Pack Leader: your side\'s other Grunts within medium range of this ship get +1 accuracy.' },
   seirSeir: { name: 'Seir-Seir', short: 'Seir-Seir', icon: '🗡', cost: 2, ships: ['samurai'], pickCrit: true,
     desc: 'When this ship causes a critical hit, you choose which system it damages (pick it in Plan Fire).' },
   tulbrik: { name: 'King Tulbrik', short: 'Tulbrik', icon: '👑', cost: 2, ships: ['brute'], hull: 2,

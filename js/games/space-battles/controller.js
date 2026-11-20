@@ -12,7 +12,7 @@ import {
   weaponTargets, weaponUsedUp, defaultFirePlan, arcWeapons, factionShipTypes, pointShare, fleetCost, buyProblem,
   stanceOptions, shipStances, maxSpeed, isSquad, squadDef, unitName, endTurnClicks, weaponOffline, boostCap,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
-  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf,
+  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus,
   captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
 } from './rules.js';
 import { faceImg } from './portraits.js';
@@ -120,7 +120,7 @@ export function mount({ container, me, sendInput }) {
       const st = STANCES[s.stance.id];
       out.push(`Stance this round: ${s.stance.wild ? `${STANCES.wild.icon} ${STANCES.wild.name} + ` : ''}${st.icon} ${escapeHtml(st.name)}${s.stance.zone ? ` (${ZONE_NAMES[s.stance.zone]})` : ''}`);
     }
-    if (captainOf(s)) out.push(`${captainHtml(s)}:${escapeHtml(captainOf(s).desc)}`);
+    if (captainOf(s)) out.push(`${captainHtml(s)}: ${escapeHtml(captainOf(s).desc)}`);
     for (const c of s.crits || []) {
       const cd = CRITICALS[c.id];
       if (!cd) continue;
@@ -544,16 +544,18 @@ export function mount({ container, me, sendInput }) {
   function fireStanceNote(s) {
     const st = stanceOf(s);
     const notes = [];
-    const acc = accuracyOf(s);
+    const acc = st.accuracy || 0;
     if (acc) notes.push(`all weapons ${acc > 0 ? '+' : '−'}${Math.abs(acc)} accuracy`);
     if (st.critOn) notes.push(`crits on ${st.critOn}+`);
     if (st.squadAccuracy) notes.push(`your squadrons +${st.squadAccuracy} accuracy`);
     if (st.doubleWeapons) notes.push(st.doubleWeapons === 'all' ? 'every weapon fires twice' : `${st.doubleWeapons.map((w) => WEAPONS[w].name).join(', ')} fires twice`);
     const name = `${s.stance?.wild ? `${STANCES.wild.name} + ` : ''}${st.name}`;
-    const amelia = captainOf(s)?.alwaysCommand ? `<p class="sbp-burn">${captainHtml(s)}:your squadrons always get +${STANCES.command.squadAccuracy} accuracy.</p>` : '';
+    const amelia = captainOf(s)?.alwaysCommand ? `<p class="sbp-burn">${captainHtml(s)}: your squadrons always get +${STANCES.command.squadAccuracy} accuracy.</p>` : '';
+    const pack = packBonus(s, units());
+    const packNote = pack ? `<p class="sbp-burn">${faceImg('bossim', 22)} Bossim's Pack Leader: all weapons +${pack} accuracy.</p>` : '';
     const pd = shipDef(s).pd.length
       ? '<p class="sbp-small muted">Point-defense is free and fires on its own (yellow on the TV) at the nearest enemy squadron in close range.</p>' : '';
-    return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + amelia + pd;
+    return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + packNote + amelia + pd;
   }
 
   // Seir-Seir: which system this ship's criticals damage this round (default: random).

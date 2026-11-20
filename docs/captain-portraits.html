@@ -21,14 +21,13 @@
 <body>
 <h1>Captain portraits</h1>
 <p class="note">Drawn from <code>js/games/space-battles/portraits.js</code>. 24×24 pixels each.
-Big = 8× size, small = 2×. Jurddap and Bossim aren't Captains in the game yet.</p>
+Big = 8× size, small = 2×.</p>
 <div class="prot"><h2>Human Protectorate</h2><div class="row" id="prot"></div></div>
 <div class="djn"><h2>Djn'zuar</h2><div class="row" id="djn"></div></div>
 <script type="module">
   import { PORTRAITS, PORTRAIT_SIZE, drawPortrait } from '../js/games/space-battles/portraits.js';
   import { CAPTAINS } from '../js/games/space-battles/data.js';
 
-  const EXTRA = { jurddap: 'Jurddap (Grunt, not built yet)', bossim: 'Bossim (Grunt, not built yet)' };
   const PROT = ['shuna', 'verity', 'shrike', 'amelia', 'flaggs', 'kairos'];
 
   function draw(id, scale) {
@@ -48,7 +47,7 @@ Big = 8× size, small = 2×. Jurddap and Bossim aren't Captains in the game yet.
     pics.append(draw(id, 8), draw(id, 2));
     card.append(pics);
     const cap = CAPTAINS[id];
-    card.insertAdjacentHTML('beforeend', cap ? `<b>${cap.name}</b><span>${cap.desc}</span>` : `<b>${EXTRA[id] || id}</b>`);
+    card.insertAdjacentHTML('beforeend', cap ? `<b>${cap.name}</b><span>${cap.desc}</span>` : `<b>${id}</b>`);
     document.getElementById(PROT.includes(id) ? 'prot' : 'djn').append(card);
   }
 </script>

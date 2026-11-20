@@ -178,6 +178,8 @@ A captain is an upgrade bought for one ship (or one squadron) during fleet build
 | **Amelia Dangerfield** | Strike Carrier | 3 | **Born Commander:** your squadrons always get Command's +1 accuracy (it doesn't stack with Command, so Command isn't offered), leaving you free to pick another stance. |
 | **Iceman Flaggs** | Fighters (squadron) | 2 | Squadron **+1 accuracy**, and the **first hit on it each round is ignored**. |
 | **Golbrik** | Grunt | 2 | Unlocks the **Reckless Attack** stance. |
+| **Jurddap** | Grunt | 2 | **Headbutt:** when this ship rams (collides with) an enemy ship, the enemy takes **2 extra damage** and this ship takes **no damage**. |
+| **Bossim** | Grunt | 3 | **Pack Leader:** your side's **other Grunts** within **medium range** (8 u) of this ship get **+1 accuracy**. Several Bossims don't stack. |
 | **Seir-Seir** | Samurai | 2 | When this ship causes a critical, **you choose which system** it damages (picked in Plan Fire each round; if the target already has that one damaged, it's random). |
 | **King Tulbrik** | Brute | 2 | **+2 hull.** |
 | **Queen Uen** | Queen | 3 | **+1 max speed** and **+1 turn click** per segment. |

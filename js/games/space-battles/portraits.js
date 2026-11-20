@@ -1,7 +1,6 @@
 // Pixel-art Captain portraits, 24×24, keyed by CAPTAINS id. Same letter-grid idea as sprites.js:
 // one letter = one pixel, '.' = empty, colors from PORTRAIT_PALETTE (the ship colors plus a few
 // for faces). Preview: docs/captain-portraits.html
-// `jurddap` and `bossim` are drawn for two Grunt Captains that aren't in CAPTAINS yet.
 import { PALETTE } from './sprites.js';
 
 export const PORTRAIT_PALETTE = {
