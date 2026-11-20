@@ -84,6 +84,9 @@ organized: `docs/space-battles-build-brief-m3.md`. Milestones 1–2 are built an
 Weapons, ships and attacks follow `docs/space-battles-weapons-v2.md` (Power, Spinal/Battery/Turret
 arcs, d10 to-hit + agility), which overrides the rules doc there. `docs/ship-cards.html` draws a card
 for every ship from `data.js`. Battle size (Small/Medium/Large) is `BATTLE_SIZES` in `data.js`.
+The Protectorate and Djn'zuar rework (ships, weapons, squadrons, stances, criticals, Captains) is in
+`docs/space-battles-ships-v3.md`, which overrides v2 for those factions. Captains are `CAPTAINS` in
+`data.js` (one per ship, bought in fleet building). Duplicate ship types on a side get letters (Escort A, B).
 
 ## Testing locally
 

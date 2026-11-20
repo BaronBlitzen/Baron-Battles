@@ -4,7 +4,7 @@
 import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, WEAPONS, SHIPS, SCENARIOS, TIMING, ZONES, MISSIONS, FLEET, STANCES,
-  CRITICALS, CRIT_POOL, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS, HIT, SPECIALS, BATTLE_SIZES,
+  CRITICALS, CRIT_POOL, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS, HIT, SPECIALS, BATTLE_SIZES, CAPTAINS,
 } from './data.js';
 import {
   classOf, shipDef, simulateMove, sanitizeMovePlan, defaultMovePlan, sanitizeFirePlan,
@@ -14,7 +14,8 @@ import {
   absorbableShields, maxSpeed, critCount, isSquad, squadDef, SQUAD_R, unitDistance,
   needToHit, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTarget, latchTarget,
   launchSpot, canDock, mineSpot, sanitizeHold, sizeRules, sizeForPlayers,
-  squadBuyProblem, killValue,
+  squadBuyProblem, killValue, applySquadHits, critOnOf, boostCap,
+  captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName,
 } from './rules.js';
 
 const PHASE_NAMES = {
@@ -37,7 +38,8 @@ const cloneSquad = (q) => ({ ...q, order: { ...q.order } });
 // their carrier's position.
 const publicSquad = (q) => ({
   id: q.id, kind: 'squad', type: q.type, faction: q.faction, owner: q.owner, carrier: q.carrier,
-  slot: q.slot, x: q.x, y: q.y, hull: q.hull, alive: q.alive, docked: !!q.docked, order: { ...q.order },
+  slot: q.slot, x: q.x, y: q.y, hull: q.hull, shields: q.shields, alive: q.alive, docked: !!q.docked, order: { ...q.order },
+  captain: q.captain || null, letter: q.letter || '',
 });
 const publicShip = (s) => ({
   id: s.id, type: s.type, faction: s.faction, owner: s.owner, x: s.x, y: s.y,
@@ -47,27 +49,38 @@ const publicShip = (s) => ({
   // Stance: null while it's still secret (Plan Movement); lastStance can't be picked again.
   stance: s.stance ? { ...s.stance } : null, lastStance: s.lastStance || 'balanced',
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
-  specialUsed: s.specialUsed || 0,
+  specialUsed: s.specialUsed || 0, boost: s.boost ? { ...s.boost } : null,
+  captain: s.captain || null, letter: s.letter || '',
 });
 
 // Position and heading are set by deploy().
-function makeShip(id, type, owner) {
+function makeShip(id, type, owner, captain = null) {
   const def = SHIPS[type];
-  return {
-    id, type, faction: def.faction, owner, x: 0, y: 0, heading: 0,
+  const s = {
+    id, type, faction: def.faction, owner, x: 0, y: 0, heading: 0, captain: CAPTAINS[captain] ? captain : null,
     speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true, specialUsed: 0,
   };
+  s.hull = maxHull(s);
+  return s;
 }
 
 // Squadrons start the battle docked inside their carrier (rules §8).
-function makeSquads(carrier, types, nextId) {
+function makeSquads(carrier, types, nextId, captains = []) {
   return types.map((type, slot) => {
     const def = SQUADRONS[type];
     return {
       id: nextId(), kind: 'squad', type, faction: def.faction, owner: carrier.owner, carrier: carrier.id, slot,
-      x: carrier.x, y: carrier.y, hull: def.hull, alive: true, docked: true, order: { order: 'docked' },
+      x: carrier.x, y: carrier.y, hull: def.craft, shields: def.shield ? def.craft : 0,
+      alive: true, docked: true, order: { order: 'docked' }, captain: CAPTAINS[captains[slot]] ? captains[slot] : null,
     };
   });
+}
+
+// "Escort A", "Escort B"…: letters for each type a side has more than one of (in deploy order).
+function assignLetters(units) {
+  const groups = {};
+  for (const u of units) (groups[`${u.faction}|${u.type}`] ||= []).push(u);
+  for (const g of Object.values(groups)) g.forEach((u, i) => { u.letter = g.length > 1 ? String.fromCharCode(65 + i) : ''; });
 }
 
 // Each faction deploys on its own edge (a faction without one takes the free edge),
@@ -159,6 +172,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   let firePlans = {};
   let repairPlans = {}; // playerId -> { shipId: Damage Control repair choice }
   let holdPlans = {}; // playerId -> { shipId: Smuggler's Hold choice { target, kind } }
+  let critPlans = {}; // playerId -> { shipId: critical system id } (Seir-Seir picks the critical)
   let mines = []; // [{ id, x, y }] dropped by Mine Drop (neutral)
   let mineCount = 0;
   let anim = null;
@@ -307,7 +321,24 @@ export function start({ container, players, setPhoneState, onExit }) {
       const f = teams[id];
       const mine = fleets[id] || [];
       if (!f || buyProblem(msg.shipType, f, mine, shareOf(id), teamShipCount(f), sizeRules(size).maxShips)) return;
-      fleets[id] = [...mine, { type: msg.shipType, wing: [] }];
+      fleets[id] = [...mine, { type: msg.shipType, wing: [], captain: null, wingCaptains: [] }];
+      delete ready[id];
+    } else if (msg.type === 'captain' || msg.type === 'squadCaptain') {
+      // Captain upgrade on a ship (or one squadron of a carrier); captain null = dismiss.
+      const mine = fleets[id] || [];
+      const i = Number(msg.index);
+      const squad = msg.type === 'squadCaptain';
+      const k = squad ? Number(msg.slot) : null;
+      const e = mine[i];
+      if (!e || (squad && !(Number.isInteger(k) && e.wing[k]))) return;
+      if (msg.captain && captainProblem(msg.captain, mine, i, shareOf(id), k)) return;
+      const cap = msg.captain || null;
+      fleets[id] = mine.map((x, j) => {
+        if (j !== i) return x;
+        if (!squad) return { ...x, captain: cap };
+        const wc = x.wing.map((_, m) => (m === k ? cap : x.wingCaptains?.[m] || null));
+        return { ...x, wingCaptains: wc };
+      });
       delete ready[id];
     } else if (msg.type === 'buySquad') {
       // Squadrons fill a carrier the player owns (rules §1).
@@ -315,13 +346,15 @@ export function start({ container, players, setPhoneState, onExit }) {
       const mine = fleets[id] || [];
       const i = Number(msg.index);
       if (!f || !Number.isInteger(i) || squadBuyProblem(msg.squadType, f, mine, i, shareOf(id))) return;
-      fleets[id] = mine.map((e, j) => (j === i ? { ...e, wing: [...e.wing, msg.squadType] } : e));
+      fleets[id] = mine.map((e, j) => (j === i ? { ...e, wing: [...e.wing, msg.squadType], wingCaptains: [...e.wing.map((_, m) => e.wingCaptains?.[m] || null), null] } : e));
       delete ready[id];
     } else if (msg.type === 'removeSquad') {
       const mine = fleets[id] || [];
       const i = Number(msg.index), k = Number(msg.slot);
       if (!mine[i] || !Number.isInteger(k) || k < 0 || k >= mine[i].wing.length) return;
-      fleets[id] = mine.map((e, j) => (j === i ? { ...e, wing: e.wing.filter((_, m) => m !== k) } : e));
+      fleets[id] = mine.map((e, j) => (j === i ? {
+        ...e, wing: e.wing.filter((_, m) => m !== k), wingCaptains: e.wing.map((_, m) => e.wingCaptains?.[m] || null).filter((_, m) => m !== k),
+      } : e));
       delete ready[id];
     } else if (msg.type === 'remove') {
       const mine = fleets[id] || [];
@@ -399,7 +432,7 @@ export function start({ container, players, setPhoneState, onExit }) {
                       return `<li><div class="sb-pname"><span class="dot" style="background:${colorOf(id)}"></span>${escapeHtml(nameOf(id))}
                         <span class="sb-pts ${overBudget(id) ? 'red' : ''}">${spentOf(id)}/${share}</span>
                         ${!online.has(id) ? '<em class="muted">offline</em>' : ready[id] ? '<b class="green">✔ Ready</b>' : ''}</div>
-                        ${mine.length ? `<div class="sb-pships">${mine.map((e) => escapeHtml(SHIPS[e.type].short + (e.wing.length ? ` (${e.wing.map((q) => SQUADRONS[q].short).join(', ')})` : ''))).join(' · ')}</div>` : ''}</li>`;
+                        ${mine.length ? `<div class="sb-pships">${mine.map((e) => escapeHtml(SHIPS[e.type].short + (e.captain ? ` [${CAPTAINS[e.captain].short}]` : '') + (e.wing.length ? ` (${e.wing.map((q, k) => SQUADRONS[q].short + (e.wingCaptains?.[k] ? ` [${CAPTAINS[e.wingCaptains[k]].short}]` : '')).join(', ')})` : ''))).join(' · ')}</div>` : ''}</li>`;
                     }).join('') : '<li class="muted">No players yet</li>'}
                   </ul>` : '<p class="sb-soon">Coming soon</p>'}
               </div>`;
@@ -420,15 +453,17 @@ export function start({ container, players, setPhoneState, onExit }) {
     for (const id of order) {
       if (!battleFactions.includes(teams[id])) continue;
       for (const e of fleets[id] || []) {
-        const s = makeShip(`s${ships.length + 1}`, e.type, id);
+        const s = makeShip(`s${ships.length + 1}`, e.type, id, e.captain);
         ships.push(s);
-        if (e.wing.length) wings.push([s, e.wing]);
+        if (e.wing.length) wings.push([s, e.wing, e.wingCaptains || []]);
       }
     }
     deploy(ships, battleFactions, scenario); // players in join order, each player's ships together
     squads = [];
     let qn = 0;
-    for (const [s, types] of wings) squads.push(...makeSquads(s, types, () => `q${++qn}`));
+    for (const [s, types, caps] of wings) squads.push(...makeSquads(s, types, () => `q${++qn}`, caps));
+    assignLetters(ships);
+    assignLetters(squads);
     kills = Object.fromEntries(battleFactions.map((f) => [f, 0]));
     mines = [];
     ready = {};
@@ -452,7 +487,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   function checkHome(list) {
     for (const s of list) {
       if (!s.alive || s.homeUsed || !FACTIONS[s.faction].traits.home) continue;
-      if (s.hull <= shipDef(s).hull / 2) { s.homeUsed = true; s.burnRound = round + 1; }
+      if (s.hull <= maxHull(s) / 2) { s.homeUsed = true; s.burnRound = round + 1; }
     }
   }
 
@@ -466,11 +501,12 @@ export function start({ container, players, setPhoneState, onExit }) {
         s.lastStance = s.stance?.id || 'balanced';
         s.stance = null;
         s.tempShields = {};
-        // Criticals caught last round now take effect (Weapons Offline, Bridge Fire).
+        // Criticals caught last round now take effect (Hull Fire).
         for (const c of s.crits || []) delete c.fresh;
       }
       repairPlans = {};
       holdPlans = {};
+      critPlans = {};
     }
     ready = {};
     movePlans = {};
@@ -506,11 +542,14 @@ export function start({ container, players, setPhoneState, onExit }) {
     if (kind === 'planFire') {
       repairPlans[id] = {};
       holdPlans[id] = {};
+      critPlans[id] = {};
       for (const s of mine) {
         const r = sanitizeRepair(s, msg.repairs?.[s.id]);
         if (r) repairPlans[id][s.id] = r;
         const h = sanitizeHold(s, msg.holds?.[s.id], ships);
         if (h) holdPlans[id][s.id] = h;
+        const cp = msg.critPicks?.[s.id];
+        if (captainOf(s)?.pickCrit && CRIT_POOL.includes(cp)) critPlans[id][s.id] = cp;
       }
     }
     ready[id] = true;
@@ -532,23 +571,40 @@ export function start({ container, players, setPhoneState, onExit }) {
   // ---------- Move ----------
   function resolveMove() {
     const plans = {};
-    for (const s of ships) {
-      if (!s.alive) continue;
-      plans[s.id] = (ready[s.owner] && movePlans[s.owner]?.[s.id]) || defaultMovePlan(s);
-      // Reveal the stance: it lasts the whole round. Shield Charge adds temporary shields.
-      s.stance = plans[s.id].stance;
-      const charge = STANCES[s.stance.id].chargeShields;
-      s.tempShields = charge ? { [s.stance.zone]: charge } : {};
-    }
-    // New squadron orders, one per squadron (kept on a timeout, or while Comms Down is acting).
-    const newOrders = {};
-    for (const s of ships) {
-      if (s.alive && plans[s.id].squads && isCarrier(s) && !critCount(s, 'comms')) Object.assign(newOrders, plans[s.id].squads);
-    }
-    const res = simulateMove(ships, plans, { ...scenario, mines });
     const t0 = now();
     phoneShips = ships.map(clone);
     phoneSquads = squads.map(cloneSquad);
+    const pending = [];
+    const fx = [];
+    const stanceKills = new Set(); // ships destroyed by their own Violent Turn
+    for (const s of ships) {
+      if (!s.alive) continue;
+      plans[s.id] = (ready[s.owner] && movePlans[s.owner]?.[s.id]) || defaultMovePlan(s);
+      // Reveal the stance: it lasts the whole round.
+      s.stance = plans[s.id].stance;
+      const st = STANCES[s.stance.id];
+      s.tempShields = {};
+      // Shield Boost: +2 on one side, up to 2 over max. What's over max is lost at the end of next round.
+      if (st.boostShields) {
+        const z = s.stance.zone;
+        const gain = Math.max(0, Math.min(st.boostShields, boostCap(s, z) - s.shields[z]));
+        s.shields[z] += gain;
+        s.boost = { zone: z, until: round + 1 };
+        if (gain) pending.push({ at: t0 + 200, shipId: s.id, zone: z, shieldLost: -gain, hullLost: 0 });
+      }
+      // Violent Turn: 1 hull damage (ignores shields) before moving.
+      if (st.selfDamage) {
+        const d = applyHullDamage(s, st.selfDamage);
+        pending.push({ at: t0 + 200, ...d });
+        if (s.hull <= 0) { s.alive = false; stanceKills.add(s.id); credit(s); delete plans[s.id]; }
+      }
+    }
+    // New squadron orders, one per squadron (kept on a timeout).
+    const newOrders = {};
+    for (const s of ships) {
+      if (s.alive && plans[s.id].squads && isCarrier(s)) Object.assign(newOrders, plans[s.id].squads);
+    }
+    const res = simulateMove(ships, plans, { ...scenario, mines });
     const before = new Set(ships.filter((s) => s.alive).map((s) => s.id));
     ships = ships.map((s) => res.ships.find((r) => r.id === s.id) || s);
     // Mines: the ones set off are gone; Mine Drop leaves a new one behind each ship that used it.
@@ -597,8 +653,6 @@ export function start({ container, players, setPhoneState, onExit }) {
       q.latched = latchTarget(q, ships)?.id || null;
     }
     const squadMs = Object.keys(squadPaths).length ? TIMING.squadMoveMs : 0;
-    const pending = [];
-    const fx = [];
     for (const ev of res.events) {
       const at = t0 + (ev.tick / MOVE_TICKS) * TIMING.moveMs;
       fx.push({ at, x: ev.x, y: ev.y, ram: ev.ram, kind: ev.kind });
@@ -607,7 +661,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     anim = {
       kind: 'move', start: t0, end: t0 + TIMING.moveMs + squadMs + 900, frames: res.frames, pending, fx, squadPaths,
       launched, docking, minesBefore, newMines,
-      dying: new Set(ships.filter((s) => !s.alive && before.has(s.id)).map((s) => s.id)),
+      dying: new Set([...stanceKills, ...ships.filter((s) => !s.alive && before.has(s.id)).map((s) => s.id)]),
       dieAt: t0 + TIMING.moveMs + 100,
     };
     phase = 'move';
@@ -628,47 +682,53 @@ export function start({ container, players, setPhoneState, onExit }) {
     return { hits: crits.length, crits };
   }
 
-  // One weapon's shots at one target (one "attack": all its hits add up). Weapons v2: every
-  // shot rolls a d10 (needToHit). Against a squadron: no crits, no special effects.
+  // One weapon's shots at one target (one "attack": all its hits add up). Every shot rolls a d10
+  // (needToHit). Against a squadron: no crits, no special effects.
   function rollWeapon(s, t, w, shots = w.shots) {
     const wd = WEAPONS[w.weapon];
     const band = rangeBand(unitDistance(s, t));
     const sq = isSquad(t);
     const need = needToHit(s, wd, t);
-    const r = rollShots(shots, need, wd.critOn || HIT.critOn, !sq);
+    const r = rollShots(shots, need, critOnOf(s, wd), !sq && !wd.pd);
     return {
-      band, shots, need, hits: r.hits, crits: r.crits, perHit: wd.damage,
+      band, shots, need, hits: r.hits, crits: r.crits, perHit: wd.damage, ignoreShields: !!wd.ignoreShields,
       effect: sq ? null : wd.effect || null, weapon: w.weapon,
     };
   }
 
-  // A squadron's automatic attack (rules §8). Same d10 roll; only bombers crit (on a 10, vs ships).
-  // Screen (no ship has it right now): −1 shot against screened ships.
-  function rollSquad(q, t, profile) {
-    let shots = profile.shots;
+  // A squadron's automatic attack: every living craft fires one shot. Only bombers crit (on a 10,
+  // vs ships). Screen (no ship has it right now): −1 shot against screened ships.
+  function rollSquad(q, t) {
+    const def = squadDef(q);
+    let shots = q.hull;
     const screen = !isSquad(t) && screened(t, ships);
     if (screen) shots = Math.max(0, shots - 1);
-    const need = needToHit(q, null, t);
-    const r = rollShots(shots, need, HIT.critOn, !isSquad(t) && !!squadDef(q).crit);
-    return { band: 'close', shots, need, hits: r.hits, crits: r.crits, perHit: profile.damage, effect: null, weapon: null, screen };
+    const need = needToHit(q, null, t, ships);
+    const r = rollShots(shots, need, HIT.critOn, !isSquad(t) && !!def.crit);
+    return { band: 'close', shots, need, hits: r.hits, crits: r.crits, perHit: def.damage, ignoreShields: !!def.ignoreShields, effect: null, weapon: null, screen };
   }
 
-  // Gives `ship` one random critical (rules §7). Mutates the ship; returns the new critical.
-  // `fresh` = caught this round (Weapons Offline / Bridge Fire start acting next round).
-  // Comms Down can only hit a carrier that still has living squadrons.
-  function addCrit(ship) {
+  // Damages one of `ship`'s systems, picked at random among those not damaged yet (a repeat is
+  // rerolled). Mutates the ship; returns the new critical, or null if every system is already
+  // damaged. `fresh` = caught this round (Hull Fire starts burning next round).
+  // `prefer` (Seir-Seir): the system to damage, if it isn't damaged already (else random).
+  function addCrit(ship, prefer = null) {
     const pick = (list) => list[Math.floor(Math.random() * list.length)];
-    const pool = CRIT_POOL.filter((id) => id !== 'comms' || (isCarrier(ship) && wingOf(ship.id, squads).length));
-    const c = { id: pick(pool), fresh: true };
-    if (c.id === 'shieldGen') c.zone = pick(ZONES);
     if (!ship.crits) ship.crits = [];
+    const pool = CRIT_POOL.filter((id) => !ship.crits.some((c) => c.id === id));
+    if (!pool.length) return null;
+    const c = { id: pool.includes(prefer) ? prefer : pick(pool), fresh: true };
+    if (c.id === 'weapons') {
+      const def = shipDef(ship);
+      const list = [];
+      for (const arc of Object.keys(def.arcs)) def.arcs[arc].forEach((w, wi) => list.push({ arc, wi, weapon: w.weapon }));
+      Object.assign(c, pick(list));
+    }
     ship.crits.push(c);
-    // Damaged Engines: a ship now above its max speed drops to the new max at once.
-    if (c.id === 'engines') ship.speed = Math.min(ship.speed, maxSpeed(ship));
     return c;
   }
 
-  const critLabel = (c) => `${CRITICALS[c.id].name}${c.zone ? ` (${c.zone})` : ''}`;
+  const critLabel = (c) => `${CRITICALS[c.id].name}${c.weapon ? ` (${WEAPONS[c.weapon].name})` : ''}`;
 
   function resolveFire() {
     // All attacks land together on copies, so a ship destroyed now still fired.
@@ -688,21 +748,23 @@ export function start({ container, players, setPhoneState, onExit }) {
           const t = unitById(targetId);
           if (!w || !t) continue;
           if (WEAPONS[w.weapon].once) nextById[s.id].used[weaponKey(a.arc, wi)] = true;
-          attacks.push({ from: s.id, to: t.id, arc: a.arc, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w) });
+          // Exterminate / Reckless Attack: the weapon fires twice (two separate attacks).
+          for (let n = weaponRepeats(s, w); n > 0; n--) {
+            attacks.push({ from: s.id, to: t.id, arc: a.arc, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w) });
+          }
         }
       }
       // Point-defense fires on its own at the nearest enemy squadron in close range (free, not
-      // changed by stances or Weapons Offline).
+      // changed by stances or criticals).
       const pt = pdTarget(s, squads);
       if (pt) for (const w of shipDef(s).pd) attacks.push({ from: s.id, to: pt.id, zone: null, pd: true, ...rollWeapon(s, pt, w, w.shots) });
     }
     // Squadron attacks (automatic).
     for (const q of squads) {
       if (!q.alive) continue;
-      const pick = squadAttackTarget(q, all);
-      if (!pick) continue;
-      const t = pick.target;
-      attacks.push({ from: q.id, to: t.id, zone: isSquad(t) ? null : zoneFacing(t, q.x, q.y), ...rollSquad(q, t, pick.profile) });
+      const t = squadAttackTarget(q, all);
+      if (!t) continue;
+      attacks.push({ from: q.id, to: t.id, zone: isSquad(t) ? null : zoneFacing(t, q.x, q.y), ...rollSquad(q, t) });
     }
     const t0 = now();
     const landAt = t0 + FIRE_LAND_MS;
@@ -716,36 +778,46 @@ export function start({ container, players, setPhoneState, onExit }) {
       tags.push({ shipId, text, color, at });
     };
     const grappledBy = {}; // target id -> first attacker that grappled it
+    const shrugged = new Set(); // Iceman Flaggs squadrons that already ignored a hit this round
     for (const a of attacks) {
       const target = nextById[a.to];
       if (isSquad(target)) {
-        // Squadrons have no zones or shields: damage goes straight to hull.
-        const hullLost = Math.min(target.hull, a.hits * a.perHit);
-        target.hull -= hullLost;
-        a.shieldLost = 0;
-        a.hullLost = hullLost;
-        pending.push({ at: landAt, shipId: target.id, zone: null, shieldLost: 0, hullLost });
+        // Squadrons: each hit knocks off a craft's shield or destroys a craft (hull = craft).
+        const shieldsBefore = target.shields;
+        // Iceman Flaggs: the first hit on this squadron each round is ignored.
+        let hits = a.hits;
+        if (hits > 0 && captainOf(target)?.ignoreFirstHit && !shrugged.has(target.id)) {
+          shrugged.add(target.id);
+          hits--;
+          tag(a.to, '🧊 Iceman dodged a hit', '#8ce1ff');
+        }
+        const d = applySquadHits(target, new Array(hits).fill(a.perHit), a.ignoreShields);
+        a.shieldLost = d.shieldLost;
+        a.hullLost = d.hullLost;
+        pending.push({ at: landAt, shipId: target.id, zone: null, squadShieldLost: shieldsBefore - target.shields, shieldLost: 0, hullLost: d.hullLost });
         const p = perTarget[a.to] || (perTarget[a.to] = { shieldLost: 0, hullLost: 0 });
-        p.hullLost += hullLost;
+        p.shieldLost += d.shieldLost;
+        p.hullLost += d.hullLost;
         continue;
       }
-      // Critical rolls (weapons v2): while the zone still has shields, the hit does double damage;
-      // once they're gone, it causes a critical effect instead. Hits land in order, shields first.
-      let shieldLeft = absorbableShields(target, a.zone);
+      // Critical rolls: while the zone still has shields, the hit does double damage; once they're
+      // gone (or for damage that ignores shields), it damages a system instead. Hits land in order,
+      // shields first. Disruptor hits do no damage but each causes a critical hit.
+      let shieldLeft = a.ignoreShields ? 0 : absorbableShields(target, a.zone);
       let total = 0, doubled = 0, critEffects = 0;
       for (const isCrit of a.crits) {
         let dmg = a.perHit;
+        if (a.effect === 'crit') { critEffects++; continue; }
         if (isCrit && shieldLeft > 0) { dmg *= 2; doubled++; }
         else if (isCrit && a.effect !== 'ion') critEffects++;
         shieldLeft = Math.max(0, shieldLeft - dmg);
         total += dmg;
       }
       a.damage = total;
-      // Defender's stance: Overcharge +1 (attack that hit), Brace halves.
-      const amount = stanceDamage(target, total, { attack: true });
       const d = a.effect === 'ion'
-        ? applyShieldDamage(target, a.zone, amount)
-        : applyDamage(target, a.zone, amount);
+        ? applyShieldDamage(target, a.zone, total)
+        : a.ignoreShields ? { ...applyHullDamage(target, total), zone: a.zone, tempLost: 0 }
+          : applyDamage(target, a.zone, total);
       a.shieldLost = d.shieldLost + d.tempLost;
       a.hullLost = d.hullLost;
       pending.push({ at: landAt, ...d });
@@ -756,9 +828,11 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (doubled) tag(a.to, `CRIT ×2 vs shields${doubled > 1 ? ` (${doubled})` : ''}`, '#ffd43b');
       if (target.hull > 0) {
         if (a.effect === 'board') critEffects++; // Boarding Harpoon: a hit always causes 1 critical
+        const shooter = ships.find((x) => x.id === a.from);
+        const prefer = shooter && captainOf(shooter)?.pickCrit ? critPlans[shooter.owner]?.[shooter.id] : null;
         for (let i = 0; i < critEffects; i++) {
-          const c = addCrit(target);
-          tag(a.to, `CRIT: ${critLabel(c)}`, '#ff8787');
+          const c = addCrit(target, prefer);
+          tag(a.to, c ? `CRIT: ${critLabel(c)}` : 'CRIT: every system already damaged', '#ff8787');
         }
       }
       if (a.effect === 'acid') {
@@ -789,21 +863,37 @@ export function start({ container, players, setPhoneState, onExit }) {
       }
     }
 
-    // ----- End of round (rules §4 step 5): Damage Control repairs, then acid burns. -----
+    // ----- End of round: Critical Repairs, Shield Boost running out, hangar repair, fires, acid. -----
     const acidAt = t0 + ACID_MS;
     let acidKill = false, endOfRound = false;
     for (const s of next) {
-      if (s.hull <= 0 || s.stance?.id !== 'damageControl') continue;
-      const r = applyRepair(s, repairPlans[s.owner]?.[s.id] || null);
+      if (s.hull <= 0 || !STANCES[s.stance?.id]?.repairCrit) continue;
+      const fixed = applyRepair(s, repairPlans[s.owner]?.[s.id] || null);
       endOfRound = true;
-      // Negative "losses" so the TV shows the old values until the repair lands.
-      if (r.hullGained) pending.push({ at: acidAt, shipId: s.id, zone: null, shieldLost: 0, hullLost: -r.hullGained });
-      for (const z of r.zones) pending.push({ at: acidAt, shipId: s.id, zone: z, shieldLost: -1, hullLost: 0 });
-      const parts = [];
-      if (r.hullGained) parts.push(`+${r.hullGained} hull`);
-      if (r.shieldsGained) parts.push(`+${r.shieldsGained} shields`);
-      if (r.critRemoved) parts.push(`fixed ${CRITICALS[r.critRemoved].name}`);
-      tag(s.id, `🔧 ${parts.length ? parts.join(', ') : 'Nothing to repair'}`, '#8ce99a', acidAt);
+      tag(s.id, `🔧 ${fixed ? `fixed ${CRITICALS[fixed].name}` : 'Nothing to repair'}`, '#8ce99a', acidAt);
+    }
+    // Shield Boost: shields above max are lost at the end of the round after the boost.
+    for (const s of next) {
+      if (!s.boost || s.boost.until !== round) continue;
+      const z = s.boost.zone;
+      const over = s.shields[z] - shipDef(s).shields[z];
+      delete s.boost;
+      if (s.hull <= 0 || over <= 0) continue;
+      s.shields[z] -= over;
+      endOfRound = true;
+      pending.push({ at: acidAt, shipId: s.id, zone: z, shieldLost: over, hullLost: 0 });
+      tag(s.id, `⚡ −${over} boosted shield${over > 1 ? 's' : ''} faded`, '#8ce1ff', acidAt);
+    }
+    // Samuel Verity: regain 1 shield (front, then the emptier side, then the rear).
+    for (const s of next) {
+      if (s.hull <= 0) continue;
+      const z = regenZone(s);
+      if (!z) continue;
+      const gain = Math.min(captainOf(s).shieldRegen, shipDef(s).shields[z] - s.shields[z]);
+      s.shields[z] += gain;
+      endOfRound = true;
+      pending.push({ at: acidAt, shipId: s.id, zone: z, shieldLost: -gain, hullLost: 0 });
+      tag(s.id, `🛡 Verity: +${gain} ${z} shield`, '#8ce1ff', acidAt);
     }
     // Smuggler's Hold (once per game): +2 hull or remove a critical, on itself or a friendly ship
     // in close range. Only if the Free Trader survived the shooting.
@@ -814,47 +904,45 @@ export function start({ container, players, setPhoneState, onExit }) {
       s.specialUsed = (s.specialUsed || 0) + 1;
       endOfRound = true;
       if (h.kind === 'hull') {
-        const gain = Math.min(SPECIALS.smugglersHold.hull, shipDef(t).hull - t.hull);
+        const gain = Math.min(SPECIALS.smugglersHold.hull, maxHull(t) - t.hull);
         t.hull += gain;
         if (gain) pending.push({ at: acidAt, shipId: t.id, zone: null, shieldLost: 0, hullLost: -gain });
         tag(t.id, `📦 +${gain} hull`, '#8ce99a', acidAt);
       } else {
         const c = (t.crits || []).shift();
-        tag(t.id, c ? `📦 fixed ${CRITICALS[c.id].name}` : '📦 Nothing to fix', '#8ce99a', acidAt);
+        tag(t.id, c ? `📦 fixed ${CRITICALS[c.id]?.name || 'a critical'}` : '📦 Nothing to fix', '#8ce99a', acidAt);
       }
     }
-    // Hangar repair (Protectorate): squadrons docked in a living carrier. The label goes on the
-    // carrier, since docked squadrons aren't drawn.
+    // Hangar repair (Protectorate): squadrons docked in a living carrier get their craft's shields
+    // back. The label goes on the carrier, since docked squadrons aren't drawn.
     const repaired = {};
     for (const q of nextSquads) {
-      const hr = FACTIONS[q.faction].traits.hangarRepair;
       const c = nextById[q.carrier];
-      if (!hr || !q.alive || !q.docked || q.hull <= 0 || !c?.alive || c.hull <= 0) continue;
-      const h = Math.min(hr, squadDef(q).hull - q.hull);
+      if (!FACTIONS[q.faction].traits.hangarRepair || !q.alive || !q.docked || q.hull <= 0 || !c?.alive || c.hull <= 0) continue;
+      const h = squadDef(q).shield ? q.hull - q.shields : 0;
       if (h <= 0) continue;
-      q.hull += h;
+      q.shields += h;
       endOfRound = true;
       repaired[c.id] = (repaired[c.id] || 0) + h;
     }
-    for (const [id, h] of Object.entries(repaired)) tag(id, `✈ +${h} hangar repair`, '#8ce99a', acidAt);
-    // Bridge Fire: 1 hull per fire (caught before this round), ignoring shields; Brace halves it.
+    for (const [id, h] of Object.entries(repaired)) tag(id, `✈ +${h} squadron shield${h > 1 ? 's' : ''} (hangar)`, '#8ce99a', acidAt);
+    // Hull Fire: 1 hull damage (caught before this round), ignoring shields.
     for (const s of next) {
-      const fires = critCount(s, 'bridgeFire');
-      if (!fires || s.hull <= 0) continue;
+      if (!critCount(s, 'hull') || s.hull <= 0) continue;
       endOfRound = true;
-      const d = applyHullDamage(s, stanceDamage(s, fires * CRITICALS.bridgeFire.burn));
+      const d = applyHullDamage(s, CRITICALS.hull.burn);
       pending.push({ at: acidAt, ...d });
-      tag(s.id, `🔥 −${d.hullLost} bridge fire`, '#ffa94d', acidAt);
+      tag(s.id, `🔥 −${d.hullLost} hull fire`, '#ffa94d', acidAt);
       if (s.hull <= 0) acidKill = true;
     }
-    // Acid ignores shields (Brace still halves it).
+    // Acid ignores shields.
     for (const s of next) {
       const due = s.acidDue[round];
       if (!due) continue;
       delete s.acidDue[round];
       if (s.hull <= 0) continue;
       endOfRound = true;
-      const d = applyHullDamage(s, stanceDamage(s, due));
+      const d = applyHullDamage(s, due);
       pending.push({ at: acidAt, ...d, acid: true });
       tag(s.id, `−${d.hullLost} acid`, '#a9e34b', acidAt);
       if (s.hull <= 0) acidKill = true;
@@ -866,7 +954,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       const t = q.latched && nextById[q.latched];
       if (!t || !q.alive || q.hull <= 0 || !t.alive || t.hull <= 0) continue;
       const c = addCrit(t);
-      tag(t.id, `BOARDED! CRIT: ${critLabel(c)}`, '#ff8787', acidAt);
+      tag(t.id, `BOARDED!${c ? ` CRIT: ${critLabel(c)}` : ''}`, '#ff8787', acidAt);
       q.alive = false;
       boarded.add(q.id);
       endOfRound = true;
@@ -960,7 +1048,7 @@ export function start({ container, players, setPhoneState, onExit }) {
               <h3 style="color:${FACTIONS[f].color}">${escapeHtml(FACTIONS[f].short)} <small class="muted">fleet value ${result.values[f]}</small></h3>
               <ul>
                 ${ships.filter((s) => s.faction === f).map((s) => `
-                  <li><span class="dot" style="background:${colorOf(s.owner)}"></span>${escapeHtml(SHIPS[s.type].short)}
+                  <li><span class="dot" style="background:${colorOf(s.owner)}"></span>${escapeHtml(unitName(s))}
                     <small class="muted">${escapeHtml(nameOf(s.owner))}</small>
                     <span class="tag ${s.alive ? 'ok' : 'dead'}">${s.alive ? `${s.hull} hull` : 'Destroyed'}</span></li>`).join('')}
                 ${squads.some((q) => q.faction === f) ? `<li class="muted">Squadrons left: ${squads.filter((q) => q.faction === f && q.alive).length} of ${squads.filter((q) => q.faction === f).length}</li>` : ''}
@@ -1028,7 +1116,8 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   const PULL_MS = 600; // how long a Grapple pull takes on screen (starts when damage lands)
-  const TRACER_COLORS = { ion: '#8ce1ff', acid: '#a9e34b', disrupt: '#ffe066' }; // others: shooter's color
+  const TRACER_COLORS = { ion: '#8ce1ff', acid: '#a9e34b', disrupt: '#ffe066', crit: '#ff8787' }; // others: shooter's color
+  const PD_COLOR = '#ffd43b'; // point-defense tracers are always yellow
 
   function poseOf(s, t) {
     if (isSquad(s)) {
@@ -1054,16 +1143,18 @@ export function start({ container, players, setPhoneState, onExit }) {
   // Hull and shields as shown right now (damage that hasn't "landed" yet is added back).
   function shownStats(s, t) {
     let hull = s.hull;
+    let craftShields = s.shields; // squadrons: number of craft with a shield
     const sh = { ...s.shields };
     const temp = { ...(s.tempShields || {}) };
     if (anim) {
       for (const p of anim.pending) {
         if (p.shipId !== s.id || p.at <= t) continue;
         hull += p.hullLost;
-        if (p.zone) { sh[p.zone] += p.shieldLost; temp[p.zone] = (temp[p.zone] || 0) + (p.tempLost || 0); }
+        if (isSquad(s)) craftShields += p.squadShieldLost || 0;
+        else if (p.zone) { sh[p.zone] += p.shieldLost; temp[p.zone] = (temp[p.zone] || 0) + (p.tempLost || 0); }
       }
     }
-    return { hull, sh, temp };
+    return { hull, sh, temp, craftShields };
   }
 
   const SHAPES = {
@@ -1105,8 +1196,8 @@ export function start({ container, players, setPhoneState, onExit }) {
     ctx.shadowBlur = 0;
 
     // Shield marks: one thin arc per shield point in each 90° zone.
-    // Gold marks = Shield Charge's temporary shields (used up first). A zone switched off by
-    // the stance (Shield Charge's opposite zone, Full Burn's rear) is drawn faint and dashed.
+    // Gold marks = Shield Boost's shields above max (lost at the end of next round). While the
+    // Shield Generator is damaged, every zone is drawn faint and dashed (the shields count as 0).
     const { hull, sh, temp } = shownStats(s, t);
     const R = (cls.length / 2) * S + 6;
     const ZONE_ANGLE = { front: 0, right: 90, rear: 180, left: -90 };
@@ -1126,7 +1217,8 @@ export function start({ container, players, setPhoneState, onExit }) {
         ctx.setLineDash([]);
       }
       for (let i = 0; i < n + tn; i++) {
-        ctx.strokeStyle = i < tn ? 'rgba(255,212,59,.95)' : off ? 'rgba(140,225,255,.25)' : 'rgba(140,225,255,.85)';
+        const over = i < tn || i - tn >= def.shields[z];
+        ctx.strokeStyle = off ? 'rgba(140,225,255,.25)' : over ? 'rgba(255,212,59,.95)' : 'rgba(140,225,255,.85)';
         ctx.lineWidth = 1.6;
         if (off && i >= tn) ctx.setLineDash([2, 3]);
         ctx.beginPath();
@@ -1144,14 +1236,15 @@ export function start({ container, players, setPhoneState, onExit }) {
     const by = cy + R + 12;
     ctx.fillStyle = 'rgba(0,0,0,.6)';
     ctx.fillRect(cx - barW / 2 - 1, by - 1, barW + 2, 7);
-    const frac = Math.max(0, hull / def.hull);
+    const frac = Math.max(0, hull / maxHull(s));
     ctx.fillStyle = frac > 0.5 ? '#51cf66' : frac > 0.25 ? '#fcc419' : '#ff6b6b';
     ctx.fillRect(cx - barW / 2, by, barW * frac, 5);
     const burnTag = phase === 'planMove' ? `${s.recover ? ' 🛟' : ''}${s.burn ? ' 🚀' : ''}${s.disrupted ? ' ⚡' : ''}${s.grappled ? ' ⚓' : ''}` : '';
     // Squadrons docked inside (✈2). While ships are still moving, the count from before the launch.
     const sqList = anim?.kind === 'move' && t < anim.start + TIMING.moveMs && phoneSquads ? phoneSquads : squads;
     const docked = isCarrier(s) ? sqList.filter((q) => q.alive && q.docked && q.carrier === s.id).length : 0;
-    label(`${s.owner ? `${def.short} · ${nameOf(s.owner)}` : def.short}${docked ? ` ✈${docked}` : ''}${burnTag}`, cx, cy - R - 10, color, Math.max(11, S * 0.42));
+    const nm = `${unitName(s)}${captainOf(s) ? ` ${captainOf(s).icon}${captainOf(s).short}` : ""}`;
+    label(`${s.owner ? `${nm} · ${nameOf(s.owner)}` : nm}${docked ? ` ✈${docked}` : ''}${burnTag}`, cx, cy - R - 10, color, Math.max(11, S * 0.42));
     // Critical icons under the hull bar.
     if (s.crits?.length && s.alive) {
       ctx.font = `700 ${Math.max(11, S * 0.42)}px system-ui, sans-serif`;
@@ -1163,15 +1256,29 @@ export function start({ container, players, setPhoneState, onExit }) {
     // Stance icon + name (revealed when the Move starts, shown for the rest of the round).
     if (s.stance && phase !== 'planMove') {
       const st = STANCES[s.stance.id];
-      const hunted = s.stance.target ? ships.find((x) => x.id === s.stance.target) : null;
-      let text = `${st.icon} ${st.name}${s.stance.zone ? ` (${s.stance.zone})` : ''}${hunted ? ` → ${SHIPS[hunted.type].short}` : ''}`;
-      label(text, cx, cy - R - 10 - Math.max(12, S * 0.5), s.stance.id === 'balanced' ? 'rgba(220,220,240,.6)' : '#ffd43b', Math.max(10, S * 0.38));
+      const text = `${s.stance.wild ? `${STANCES.wild.icon} ${STANCES.wild.name} + ` : ""}${st.icon} ${st.name}${s.stance.zone ? ` (${s.stance.zone})` : ''}`;
+      label(text, cx, cy - R - 10 - Math.max(12, S * 0.5), s.stance.id === 'balanced' && !s.stance.wild ? 'rgba(220,220,240,.6)' : '#ffd43b', Math.max(10, S * 0.38));
     }
     ctx.restore();
   }
 
-  // A squadron: small glowing circle in its player's color with its role letter (F/B/P)
-  // and one pip per hull point underneath.
+  // Where each craft of a squadron is drawn, around the squadron's center (in u).
+  function craftSpots(n) {
+    if (n <= 1) return [[0, 0]];
+    const out = [];
+    const inner = n > 5 ? 1 : 0;
+    if (inner) out.push([0, 0]);
+    const ring = n - inner;
+    const r = SQUAD_R * 0.62;
+    for (let i = 0; i < ring; i++) {
+      const a = (i / ring) * Math.PI * 2 - Math.PI / 2;
+      out.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    return out;
+  }
+
+  // A squadron: one small glowing circle per craft in its player's color. Craft that still have
+  // their shield get a light-blue ring; craft already lost are left out.
   function drawSquad(q, t) {
     const S = scale;
     const p = poseOf(q, t);
@@ -1186,34 +1293,34 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (anim.docking?.has(q.id) && t > sqEnd) alpha = Math.max(0, 1 - (t - sqEnd) / 400); // docking
     }
     if (alpha <= 0) return;
-    const R = Math.max(7, SQUAD_R * S);
     const cx = p.x * S, cy = p.y * S;
+    const { hull, craftShields } = shownStats(q, t);
+    const n = Math.max(1, hull);
+    const spots = craftSpots(n);
+    const kScale = Math.max(1, 15 / (SQUAD_R * S)); // keep the group readable when zoomed out
+    const r = Math.max(3, SQUAD_R * S * (n > 4 ? 0.26 : 0.32) * kScale);
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = `${color}33`;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.font = `800 ${Math.round(R * 1.15)}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff';
-    ctx.fillText(SQUADRON_ROLES[def.role].letter, cx, cy + 1);
-    const { hull } = shownStats(q, t);
-    const pip = 3.2;
-    const x0 = cx - ((def.hull - 1) * pip * 1.6) / 2;
-    for (let i = 0; i < def.hull; i++) {
-      ctx.fillStyle = i < hull ? '#51cf66' : 'rgba(255,255,255,.18)';
+    spots.forEach(([ox, oy], i) => {
+      const x = cx + ox * S * kScale, y = cy + oy * S * kScale;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = def.role === 'bomber' ? color : `${color}66`;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(x0 + i * pip * 1.6, cy + R + 5, pip / 2 + 0.4, 0, Math.PI * 2);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
-    }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      if (i < craftShields && hull > 0) {
+        ctx.strokeStyle = 'rgba(140,225,255,.9)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 2.2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    });
     ctx.restore();
   }
 
@@ -1271,8 +1378,9 @@ export function start({ container, players, setPhoneState, onExit }) {
     ctx.globalAlpha = Math.min(1, 2.2 - k * 2);
     if (!shieldLost && !hullLost) label('MISS', x, y, '#b0a8c8', size * 0.8);
     let yy = y;
-    if (hullLost) { label(`−${hullLost} hull`, x, yy, '#ff6b6b', size); yy -= size * 1.05; }
-    if (shieldLost) label(`−${shieldLost} shield`, x, yy, '#8ce1ff', size * 0.85);
+    const unit = isSquad(s) ? 'craft' : 'hull';
+    if (hullLost) { label(hullLost < 0 ? `+${-hullLost} ${unit}` : `−${hullLost} ${unit}`, x, yy, hullLost < 0 ? '#8ce99a' : '#ff6b6b', size); yy -= size * 1.05; }
+    if (shieldLost) label(shieldLost < 0 ? `+${-shieldLost} shield` : `−${shieldLost} shield`, x, yy, '#8ce1ff', size * 0.85);
     ctx.restore();
   }
 
@@ -1344,7 +1452,7 @@ export function start({ container, players, setPhoneState, onExit }) {
         if (fade <= 0) continue;
         const x1 = from.x * S, y1 = from.y * S;
         const x2 = x1 + (to.x * S - x1) * k, y2 = y1 + (to.y * S - y1) * k;
-        const color = TRACER_COLORS[a.effect] || colorOf(from.owner);
+        const color = a.pd ? PD_COLOR : TRACER_COLORS[a.effect] || colorOf(from.owner);
         ctx.save();
         ctx.globalAlpha = fade;
         ctx.strokeStyle = color;

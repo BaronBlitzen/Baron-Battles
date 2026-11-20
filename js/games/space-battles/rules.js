@@ -4,13 +4,15 @@
 //
 // A ship at runtime looks like:
 // { id, type, faction, owner, x, y, heading, speed, hull, shields: { front, left, right, rear }, alive }
+// plus `captain` (CAPTAINS id or null) and `letter` ('A', 'B'… when a side has several of that type).
 import {
-  FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ARCS, ARC_DEFS, ZONES, FLEET, STANCES, CLASS_STANCES, CRITICALS,
-  SQUADRONS, SQUADRON, SQUAD_ORDERS, HIT, SPECIALS, MINES, BATTLE_SIZES,
+  FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ARCS, ARC_DEFS, ZONES, FLEET, STANCES, STANCE_ORDER, CRITICALS,
+  SQUADRONS, SQUADRON, SQUAD_ORDERS, HIT, SPECIALS, MINES, BATTLE_SIZES, CAPTAINS, CAPTAIN_ORDER,
 } from './data.js';
 //
 // A squadron at runtime looks like:
-// { id, kind: 'squad', type, faction, owner, carrier (ship id), slot (0..2 in its wing), x, y, hull, alive }
+// { id, kind: 'squad', type, faction, owner, carrier (ship id), slot (0.. in its wing), x, y,
+//   hull (living craft), shields (living craft that still have their shield), alive }
 // "Units" = ships and squadrons together (anything that can be targeted).
 
 const RAD = Math.PI / 180;
@@ -131,28 +133,72 @@ export function unitDistance(a, b) {
   return shipDistance(a, b);
 }
 
-// Display name of a unit ("Valiant", "Hawk squadron").
-export const unitName = (u) => (isSquad(u) ? `${squadDef(u).short} squadron` : SHIPS[u.type].short);
+// Display name of a unit ("Escort A", "Fighters squadron B"). The letter only appears when a side
+// has more than one of that type.
+export const unitName = (u) => {
+  const l = u.letter ? ` ${u.letter}` : '';
+  return isSquad(u) ? `${squadDef(u).short} squadron${l}` : `${SHIPS[u.type].short}${l}`;
+};
 
-// ---------- To hit (weapons v2) ----------
-// Every shot rolls a d10 and hits on HIT.base+ plus the target's agility. A 10 always hits.
-// Agility: the target's class (squadrons: SQUADRON.agility), +1 for an Evasive ship unless the
-// attacker is a Hunter that marked it. A Hunter hits its mark on one lower. Point-defense ignores
-// squadron agility. `attacker` may be a ship or a squadron; `wd` is the weapon (null for squadrons).
-export function agilityOf(target, attacker = null) {
+// ---------- Captains ----------
+export const captainOf = (u) => (u && CAPTAINS[u.captain]) || null;
+
+// Captains a ship type (or, with `squad`, a squadron type) may take.
+export function captainChoices(type, squad = false) {
+  return CAPTAIN_ORDER.filter((id) => {
+    const c = CAPTAINS[id];
+    if (squad) return !!c.squadrons?.includes(type);
+    if (c.squadrons) return false;
+    if (c.ships) return c.ships.includes(type);
+    return !!SHIPS[type] && (!c.factions || c.factions.includes(SHIPS[type].faction));
+  });
+}
+
+export const maxHull = (ship) => shipDef(ship).hull + (captainOf(ship)?.hull || 0);
+
+// Samuel Verity: the zone that regains a shield at the end of the round, or null (all full, or
+// the Shield Generator is damaged). Front first, then the side with fewer shields (left on a tie),
+// then the rear.
+export function regenZone(ship) {
+  if (!captainOf(ship)?.shieldRegen || critCount(ship, 'shieldGen')) return null;
+  const max = shipDef(ship).shields;
+  const low = (z) => ship.shields[z] < max[z];
+  if (low('front')) return 'front';
+  const sides = ['left', 'right'].filter(low);
+  if (sides.length) return sides.length === 2 && ship.shields.right < ship.shields.left ? 'right' : sides[0];
+  return low('rear') ? 'rear' : null;
+}
+
+// ---------- To hit ----------
+// Every shot rolls a d10 and hits on HIT.base+ plus the target's agility, minus the shooter's
+// accuracy. A 10 always hits. Agility: the target's class (squadrons: SQUADRON.agility), +1 with
+// Wild Maneuvers. Accuracy: the shooter's stance (Wild −1, Targeted +1); a squadron's own
+// `accuracy` plus Command (+1) when its carrier uses it. Point-defense ignores squadron agility.
+// `attacker` may be a ship or a squadron; `wd` is the weapon (null for squadrons).
+export function agilityOf(target) {
   if (isSquad(target)) return SQUADRON.agility;
-  let a = classOf(target).agility || 0;
-  const st = stanceOf(target);
-  if (st.agility && !(attacker && huntTarget(attacker) === target.id)) a += st.agility;
-  return a;
+  return (classOf(target).agility || 0) + (stanceOf(target).agility || 0);
 }
 
-export function needToHit(attacker, wd, target) {
-  if (wd?.pd && isSquad(target)) return HIT.base;
-  let need = HIT.base + agilityOf(target, attacker);
-  if (!isSquad(attacker) && huntTarget(attacker) === target.id) need -= STANCES.hunter.huntHit;
-  return Math.max(2, need);
+// `ships` is only needed for squadrons (to find the carrier's Command stance).
+export function accuracyOf(attacker, ships = []) {
+  if (isSquad(attacker)) {
+    let a = (squadDef(attacker).accuracy || 0) + (captainOf(attacker)?.accuracy || 0);
+    const c = ships.find((s) => s.id === attacker.carrier);
+    // Command stance, or Amelia Dangerfield's Born Commander (always on; they don't stack).
+    if (c?.alive) a += Math.max(stanceOf(c).squadAccuracy || 0, captainOf(c)?.alwaysCommand ? STANCES.command.squadAccuracy : 0);
+    return a;
+  }
+  return stanceOf(attacker).accuracy || 0;
 }
+
+export function needToHit(attacker, wd, target, ships = []) {
+  if (wd?.pd && isSquad(target)) return HIT.base;
+  return Math.max(2, HIT.base + agilityOf(target) - accuracyOf(attacker, ships));
+}
+
+// The roll a ship's weapon crits on: the weapon's own (Torpedo 9) or Targeted Attack's 9, else 10.
+export const critOnOf = (ship, wd) => Math.min(wd.critOn || HIT.critOn, stanceOf(ship).critOn || HIT.critOn);
 
 // Chance that one d10 roll hits: rolls of `need` to 10 (a 10 always hits).
 export const chanceOf = (need) => Math.max(1, HIT.die + 1 - need) / HIT.die;
@@ -190,30 +236,45 @@ export const wingOf = (carrierId, squads) => squads.filter((q) => q.alive && q.c
 // A squadron that is out in space (alive and launched). Docked squadrons can't shoot or be shot.
 export const inSpace = (u) => u.alive && !u.docked;
 
-// Latchers only go after ships, so they can't Intercept squadrons.
-export const squadOrderAllowed = (type, order) => !(SQUADRONS[type]?.role === 'boarding' && order === 'intercept');
+// Every squadron may get every order (kept as a hook for special squadron types).
+export const squadOrderAllowed = (type, order) => !!SQUADRONS[type] && !!SQUAD_ORDERS[order];
 
 // One squadron's order from the phone: { order, target? } (see SQUAD_ORDERS). "Stay docked" only
-// for docked squadrons, Return only for launched ones; Attack needs a living enemy ship.
-// Invalid → null (keep the old order).
-export function sanitizeSquadOrder(q, o, ships) {
+// for docked squadrons, Return only for launched ones; Attack needs a living enemy ship or a
+// launched enemy squadron (`units` = ships + squadrons). Invalid → null (keep the old order).
+export function sanitizeSquadOrder(q, o, units) {
   const def = o && SQUAD_ORDERS[o.order];
   if (!def || (def.dockedOnly && !q.docked) || (def.launchedOnly && q.docked)) return null;
   if (!squadOrderAllowed(q.type, o.order)) return null;
   const out = { order: o.order };
   if (def.needsTarget) {
-    const t = ships.find((x) => x.id === o.target);
-    if (!t || isSquad(t) || !t.alive || !isEnemy(q, t)) return null;
+    const t = units.find((x) => x.id === o.target);
+    if (!t || !inSpace(t) || !isEnemy(q, t)) return null;
     out.target = t.id;
   }
   return out;
 }
 
-// Where a launched squadron appears: in a short row just behind its carrier (slot 0..2).
+// Damage to a squadron (mutates it). `hits` = damage of each hit. Hits finish off a craft whose
+// shield is already down first; otherwise a hit knocks off one craft's shield, or destroys it
+// outright if it ignores shields or does 2+ damage. Returns { shieldLost, hullLost } (hull = craft).
+export function applySquadHits(q, hits, ignoreShields = false) {
+  let shieldLost = 0, hullLost = 0;
+  for (const d of hits) {
+    if (q.hull <= 0 || d <= 0) continue;
+    if (q.hull > q.shields) { q.hull--; hullLost++; continue; }
+    if (ignoreShields || d >= 2) { q.hull--; q.shields--; hullLost++; continue; }
+    q.shields--;
+    shieldLost++;
+  }
+  return { shieldLost, hullLost };
+}
+
+// Where a launched squadron appears: in a short row just behind its carrier (slot 0..3).
 export function launchSpot(carrier, slot, map) {
-  const L = classOf(carrier).length / 2 + 0.5;
+  const L = classOf(carrier).length / 2 + 0.6;
   const c = Math.cos(carrier.heading * RAD), s = Math.sin(carrier.heading * RAD);
-  const lx = -L, ly = (slot - 1) * 0.6;
+  const lx = -L, ly = (slot - 1) * (SQUADRON.size + 0.1);
   return {
     x: Math.max(SQUAD_R, Math.min(map.w - SQUAD_R, carrier.x + lx * c - ly * s)),
     y: Math.max(SQUAD_R, Math.min(map.h - SQUAD_R, carrier.y + lx * s + ly * c)),
@@ -234,8 +295,9 @@ const nearest = (from, list) => list.reduce((best, u) => {
 // Where each launched squadron flies this round (squadrons move after ships, in straight lines, up
 // to their speed in u, ignoring asteroids and ships, stopping at the map edge with no damage).
 // Each squadron follows its own order (q.order):
-//   Escort: its own spot next to the carrier (stays put if the carrier is gone).
-//   Attack: until touching the target ship (or the nearest enemy ship if the target is gone).
+//   (no target / 'escort' fallback): its own spot next to the carrier (stays put if it's gone).
+//   Attack: until touching the target ship or squadron (if it's gone: the nearest enemy of the
+//           same kind; no enemy ships left → wait by the carrier).
 //   Intercept: at the nearest enemy squadron (where it was before squadrons moved), stopping
 //              when touching it; Escort if there are none.
 //   Return: until touching its carrier (stays put if the carrier is gone).
@@ -261,6 +323,17 @@ export function planSquadMoves(squads, ships, map) {
       else goal = { x: q.x, y: q.y };
     }
     if (order === 'attack') {
+      // A squadron target: fly at it like Intercept (if it's gone, the nearest enemy squadron).
+      const tq = enemySquads.find((x) => x.id === o.target);
+      const wasSquad = !tq && squads.some((x) => x.id === o.target);
+      const sq = tq || (wasSquad ? nearest(q, enemySquads)?.u : null);
+      if (sq) {
+        const ang = Math.atan2(sq.y - q.y, sq.x - q.x);
+        const off = (q.slot - 1) * SQUADRON.size;
+        goal = { x: sq.x - Math.sin(ang) * off, y: sq.y + Math.cos(ang) * off, squad: true };
+      }
+    }
+    if (order === 'attack' && !goal) {
       let t = enemyShips.find((s) => s.id === o.target);
       if (!t) t = nearest(q, enemyShips)?.u;
       if (t) {
@@ -311,20 +384,24 @@ export function planSquadMoves(squads, ships, map) {
   return out;
 }
 
-// What a squadron shoots this round (rules §8, close range only, asteroids never block):
-// fighters the nearest enemy squadron, else the nearest enemy ship; bombers the reverse;
-// boarding pods nothing. Docked squadrons neither shoot nor get shot.
-// Returns { target, profile } or null. `units` = ships + squadrons.
+// What a squadron shoots this round (close range only, asteroids never block). Attack: its target
+// if it's in range. Intercept: the nearest enemy squadron in range. Otherwise (or if that's not
+// possible) by role: fighters the nearest enemy squadron, else the nearest enemy ship; bombers the
+// reverse. Docked squadrons neither shoot nor get shot. Returns the target unit or null.
+// `units` = ships + squadrons.
 export function squadAttackTarget(q, units) {
+  if (!inSpace(q)) return null;
   const def = squadDef(q);
-  if (def.role === 'boarding' || !inSpace(q)) return null;
   const inRange = units.filter((u) => inSpace(u) && isEnemy(q, u) && rangeBand(unitDistance(q, u)) === 'close');
+  const o = q.order || {};
+  if (o.order === 'attack') {
+    const t = inRange.find((u) => u.id === o.target);
+    if (t) return t;
+  }
   const sq = nearest(q, inRange.filter(isSquad));
   const sh = nearest(q, inRange.filter((u) => !isSquad(u)));
-  const order = def.role === 'fighter' ? [sq, sh] : [sh, sq];
-  const pick = order.find(Boolean);
-  if (!pick) return null;
-  return { target: pick.u, profile: isSquad(pick.u) ? def.vsSquadron : def.vsShip };
+  const order = def.role === 'bomber' && o.order !== 'intercept' ? [sh, sq] : [sq, sh];
+  return order.find(Boolean)?.u || null;
 }
 
 // Warden Screen: enemy squadrons attacking `ship` lose 1 shot if a living friendly ship with
@@ -418,24 +495,54 @@ export function weaponUsedUp(ship, arc, wi) {
 // ---------- Stances (rules §5) ----------
 // During planning the stance is only in the plan, so movement helpers take a stance id.
 // From the Move phase on, the chosen stance is on the ship: ship.stance = { id, zone?, target? }.
-export const stanceOf = (ship) => STANCES[ship.stance?.id || 'balanced'];
+// The numbers of a stance choice: a stance id, or { id, wild? }. `wild` (Shuna) adds Wild
+// Maneuvers on top of the main stance: accuracy, agility and clicks add up, speed change is the bigger.
+export function stanceStats(st) {
+  const s = typeof st === 'string' ? { id: st } : st || {};
+  const main = STANCES[s.id] || STANCES.balanced;
+  if (!s.wild || s.id === 'wild') return main;
+  const w = STANCES.wild;
+  const out = { ...main };
+  for (const k of ['extraClicks', 'agility', 'accuracy']) out[k] = (main[k] || 0) + (w[k] || 0);
+  out.speedChange = Math.max(main.speedChange || 0, w.speedChange || 0);
+  return out;
+}
+export const stanceOf = (ship) => stanceStats(ship.stance || 'balanced');
 
-// Stances this ship may pick this round: Balanced + its class list, minus last round's
-// stance (no repeats, except Balanced).
-export function stanceOptions(ship) {
-  const list = ['balanced', ...(CLASS_STANCES[shipDef(ship).class] || [])];
-  return list.filter((id) => id === 'balanced' || id !== ship.lastStance);
+// Stances this ship may ever use (in STANCE_ORDER): Command for carriers (not with Amelia, who
+// always has it), Violent Turn for Grunts, captain stances for that captain.
+export function shipStances(ship) {
+  const cap = captainOf(ship);
+  return STANCE_ORDER.filter((id) => {
+    const st = STANCES[id];
+    if (st.carrierOnly && (!isCarrier(ship) || cap?.alwaysCommand)) return false;
+    if (st.ships && !st.ships.includes(ship.type)) return false;
+    if (st.captain && ship.captain !== st.captain) return false;
+    return true;
+  });
 }
 
-// ---------- Power and firing (weapons v2) ----------
-// Power this ship has to fire weapons this round: its own Power, changed by its stance
-// (Overcharge +2, Brace / Damage Control −1, Maneuvering Thrusters (evasive) −1) and Weapons Offline (−2 each).
-// Full Burn can't fire at all. Never below 0.
+// Stances this ship may pick this round (any stance may be repeated). A damaged Bridge allows
+// only Critical Repairs (or No stance).
+export function stanceOptions(ship) {
+  if (critCount(ship, 'bridge')) return ['balanced', 'repairs'];
+  return shipStances(ship);
+}
+
+// Shuna: may add Wild Maneuvers to another stance this round.
+export const canAddWild = (ship, mainId) => !!captainOf(ship)?.freeWild && mainId !== 'wild' && !critCount(ship, 'bridge');
+
+// How many times weapon `w` fires this round (Exterminate / Reckless Attack: twice).
+export function weaponRepeats(ship, w) {
+  const dw = stanceOf(ship).doubleWeapons;
+  if (!dw || WEAPONS[w.weapon].once || WEAPONS[w.weapon].pd) return 1;
+  return dw === 'all' || dw.includes(w.weapon) ? 2 : 1;
+}
+
+// ---------- Power and firing ----------
+// Power this ship has to fire weapons this round (stances don't change it).
 export function shipPower(ship) {
-  const st = stanceOf(ship);
-  if (st.noFire) return 0;
-  const p = shipDef(ship).power + (st.powerChange || 0) - critCount(ship, 'weaponsOffline') * CRITICALS.weaponsOffline.power;
-  return Math.max(0, p);
+  return Math.max(0, shipDef(ship).power);
 }
 
 export const weaponPower = (w) => WEAPONS[w.weapon].power;
@@ -450,29 +557,28 @@ export function planPower(ship, plan) {
   return n;
 }
 
-// The ship a Hunter must attack (or null when the ship isn't hunting).
-export const huntTarget = (ship) => (ship.stance?.id === 'hunter' ? ship.stance.target : null);
-
 // Expected damage from one weapon of `ship` at `target` (shown on the phone). Ion Cannon damage
-// only strips shields, so the phone labels it as shield damage. Criticals are left out.
+// only strips shields, so the phone labels it as shield damage. A Disruptor hit (a critical) is
+// counted as 2. Criticals are otherwise left out.
+export const CRIT_VALUE = 2;
 export function expectedWeaponDamage(ship, w, band, target) {
   const wd = WEAPONS[w.weapon];
-  return w.shots * hitChance(ship, wd, band, target) * wd.damage;
+  return weaponRepeats(ship, w) * w.shots * hitChance(ship, wd, band, target) * (wd.effect === 'crit' ? CRIT_VALUE : wd.damage);
 }
 
+// A weapon knocked out by a Weapons Systems critical.
+export const weaponOffline = (ship, arc, wi) => (ship.crits || []).some((c) => c.id === 'weapons' && c.arc === arc && c.wi === wi);
+
 // Valid targets for one weapon: enemy, alive, in that weapon's arc and reach, and in line of
-// sight. Sorted nearest first. Used-up once-per-game weapons have none, and so does a ship that
-// can't fire (Full Burn). A Hunter may only target its marked ship. `units` = ships and
-// squadrons. Asteroids never block shots at squadrons (they fly over them).
+// sight. Sorted nearest first. Used-up once-per-game weapons and offline weapons have none.
+// `units` = ships and squadrons. Asteroids never block shots at squadrons (they fly over them).
 export function weaponTargets(ship, arc, wi, units, asteroids) {
   const w = arcWeapons(ship, arc)[wi];
-  if (!w || weaponUsedUp(ship, arc, wi) || stanceOf(ship).noFire) return [];
+  if (!w || weaponUsedUp(ship, arc, wi) || weaponOffline(ship, arc, wi)) return [];
   const wd = WEAPONS[w.weapon];
-  const hunt = huntTarget(ship);
   const out = [];
   for (const t of units) {
     if (!t.alive || t.docked || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
-    if (hunt && t.id !== hunt) continue;
     const dist = unitDistance(ship, t);
     const band = rangeBand(dist);
     if (!hitChance(ship, wd, band, t)) continue;
@@ -537,42 +643,20 @@ export function sanitizeFirePlan(ship, plan, units, asteroids) {
   return groupPicks(picks);
 }
 
-// ---------- Criticals (rules §7) ----------
-// ship.crits = [{ id, arc?, zone?, fresh? }], oldest first. `fresh` = caught this round; criticals
-// marked `nextRound` in data.js (Weapons Offline, Bridge Fire) only act once it's gone.
-export const critCount = (ship, id) => (ship.crits || []).filter((c) => c.id === id && !c.fresh).length;
-const critCountAny = (ship, id) => (ship.crits || []).filter((c) => c.id === id).length;
+// ---------- Criticals (ships v3) ----------
+// ship.crits = [{ id, arc?, wi?, fresh? }], oldest first, at most one per system (CRIT_POOL).
+// `fresh` = caught this round; criticals marked `nextRound` in data.js (Hull Fire) only act once
+// it's gone. The others act at once. Weapons Systems remembers the weapon as (arc, wi).
+export const critCount = (ship, id) => (ship.crits || []).filter((c) => c.id === id && !(c.fresh && CRITICALS[id]?.nextRound)).length;
 
-// Max speed after Damaged Engines (never below the class's minimum speed). Engines act at once.
-export function maxSpeed(ship) {
-  const [min, max] = shipDef(ship).speed;
-  return Math.max(min, max - critCountAny(ship, 'engines'));
-}
+// Max speed (kept as a helper: Main Engines now stop speed changes instead of lowering it).
+export const maxSpeed = (ship) => shipDef(ship).speed[1] + (captainOf(ship)?.speed || 0);
 
-// Damage one attack (or collision, asteroid, edge, mine, acid) actually deals to `ship` after its
-// stance: Overcharge +1 for a weapon attack that hit at least once, Brace halves (rounded up).
-export function stanceDamage(ship, amount, { attack = false } = {}) {
-  const st = stanceOf(ship);
-  let d = amount;
-  if (attack && d > 0 && st.damageTakenBonus) d += st.damageTakenBonus;
-  if (st.halveDamage) d = Math.ceil(d / 2);
-  return d;
-}
+// Damage one attack, collision, mine or acid actually deals to `ship` (no stance changes it now).
+export const stanceDamage = (ship, amount) => amount;
 
-const OPPOSITE = { front: 'rear', rear: 'front', left: 'right', right: 'left' };
-
-// Shields a zone really has right now: Shield Charge's opposite zone and Full Burn's rear
-// count as 0 (switched off for the round, not lost). Pirates' free "home" burn has no costs.
-export function shieldsOff(ship, zone) {
-  const st = ship.stance;
-  if (!st) return false;
-  if (st.id === 'shieldCharge' && OPPOSITE[st.zone] === zone) return true;
-  if (st.id === 'fullBurn' && zone === 'rear') return true;
-  return false;
-}
-
-// Zones whose shields Damage Control can't restore (Shield Generator Hit).
-export const shieldsBroken = (ship, zone) => (ship.crits || []).some((c) => c.id === 'shieldGen' && c.zone === zone);
+// A zone's shields count as 0 while the Shield Generator is damaged (they aren't lost).
+export const shieldsOff = (ship, zone) => critCount(ship, 'shieldGen') > 0;
 
 // How many hits of one attack get past the shields (each of those rolls for a crit).
 // The attack's total (after the defender's stance) is split back into hits of `perHit` damage
@@ -599,66 +683,25 @@ export function hullHitCount(total, hits, perHit, absorbable) {
 // Shields an attack on `zone` would meet first (temporary + the zone's own, unless switched off).
 export const absorbableShields = (ship, zone) => (ship.tempShields?.[zone] || 0) + (shieldsOff(ship, zone) ? 0 : ship.shields[zone]);
 
-// ---------- Damage Control (rules §5) ----------
-// What Damage Control restores for this ship: { shields, hull, alsoRemoveCrit }
-// (Djnzuar Samurai engineers do better).
-export const repairOf = (ship) => FACTIONS[ship.faction].traits.repair || STANCES.damageControl.repair;
-
-// Repair choice from the phone: { kind: 'shields', zones: [..] } | { kind: 'hull' } | { kind: 'crit' },
-// plus optional `crit` = index into ship.crits of the critical to remove. Invalid → null (default).
+// ---------- Critical Repairs (ships v3) ----------
+// Repair choice from the phone: { crit: index into ship.crits }. Invalid → null (default: oldest).
 export function sanitizeRepair(ship, r) {
   if (!r || typeof r !== 'object') return null;
-  const out = {};
-  if (r.kind === 'hull' || r.kind === 'crit') out.kind = r.kind;
-  else if (r.kind === 'shields' && Array.isArray(r.zones)) {
-    out.kind = 'shields';
-    out.zones = r.zones.filter((z) => ZONES.includes(z)).slice(0, repairOf(ship).shields);
-  } else return null;
-  if (Number.isInteger(r.crit) && r.crit >= 0 && r.crit < (ship.crits || []).length) out.crit = r.crit;
-  return out;
+  if (!Number.isInteger(r.crit) || r.crit < 0 || r.crit >= (ship.crits || []).length) return null;
+  return { crit: r.crit };
 }
 
-// Applies a Damage Control repair at the end of the round. Mutates the ship.
-// Default (no choice): remove a critical if any (the oldest), else restore shields, else hull.
-// Shields never go above their starting value, hull never above max (rules §5), and a zone
-// with a Shield Generator Hit can't get shields back. Samurai engineers also remove a critical.
-// Returns { kind, shieldsGained, zones (one entry per shield restored), hullGained, critRemoved }.
+// Critical Repairs at the end of the round: removes the chosen critical (default: the oldest).
+// Mutates the ship. Returns the removed critical's id, or null if there was nothing to repair.
 export function applyRepair(ship, choice) {
-  const def = shipDef(ship);
-  const rep = repairOf(ship);
-  if (!ship.crits) ship.crits = [];
-  const crits = ship.crits;
-  const missing = (z) => (shieldsBroken(ship, z) ? 0 : def.shields[z] - ship.shields[z]);
-  const anyShieldMissing = ZONES.some((z) => missing(z) > 0);
-  let kind = choice?.kind;
-  if (!kind) kind = crits.length ? 'crit' : anyShieldMissing ? 'shields' : 'hull';
-  const out = { kind, shieldsGained: 0, zones: [], hullGained: 0, critRemoved: null };
-  const removeCrit = () => {
-    if (!crits.length) return;
-    const i = choice?.crit !== undefined && choice.crit < crits.length ? choice.crit : 0;
-    out.critRemoved = crits.splice(i, 1)[0].id;
-  };
-  if (kind === 'crit') removeCrit();
-  if (kind === 'hull') {
-    const h = Math.min(rep.hull, def.hull - ship.hull);
-    ship.hull += h;
-    out.hullGained = h;
-  }
-  if (kind === 'shields') {
-    const wanted = (choice?.zones || []).slice();
-    for (let i = 0; i < rep.shields; i++) {
-      // Use the chosen zone if it still has room, otherwise the most-damaged zone.
-      let z = wanted[i];
-      if (!z || missing(z) <= 0) z = [...ZONES].sort((a, b) => missing(b) - missing(a))[0];
-      if (missing(z) <= 0) break;
-      ship.shields[z]++;
-      out.zones.push(z);
-      out.shieldsGained++;
-    }
-  }
-  if (rep.alsoRemoveCrit && kind !== 'crit') removeCrit();
-  return out;
+  const crits = ship.crits || [];
+  if (!crits.length) return null;
+  const i = choice?.crit !== undefined && choice.crit < crits.length ? choice.crit : 0;
+  return crits.splice(i, 1)[0].id;
 }
+
+// Shield Boost: the most shields a zone can hold (2 over its max).
+export const boostCap = (ship, zone) => shipDef(ship).shields[zone] + (STANCES.shieldBoost.boostShields || 0);
 
 // ---------- Special abilities (weapons v2) ----------
 // Uses left of the ship's special ability `id` (0 if it doesn't have it). ship.specialUsed counts uses.
@@ -697,20 +740,19 @@ export function holdTargets(ship, ships) {
 
 // Speeds the ship may pick this round with stance `stanceId`: normally current −1 / same / +1,
 // within its class range.
-//   - Full Burn stance, or Pirates' free "home" burn (ship.burn): change by up to 2, up to 1 over max.
-//   - Overcharge: can't change speed. Damage Control: must slow down by 1 (stays at its minimum
-//     if it can't). Both still have to come back down if above max after a burn.
-//   - Grappled (hit by a Grapple Harpoon last round): can't speed up, even in Full Burn.
+//   - Wild Maneuvers: change by up to 2. Pirates' free "home" burn (ship.burn): up to 2, up to 1 over max.
+//   - Main Engines damaged: can't change speed (it still has to come back down if above max).
+//   - Grappled (hit by a Grapple Harpoon last round): can't speed up.
 export function speedOptions(ship, stanceId = 'balanced') {
-  const st = STANCES[stanceId] || STANCES.balanced;
-  let min = shipDef(ship).speed[0];
-  let max = maxSpeed(ship); // lowered by Damaged Engines
+  const st = stanceStats(stanceId);
+  const min = shipDef(ship).speed[0];
+  let max = maxSpeed(ship);
   const home = ship.burn && FACTIONS[ship.faction].traits.home;
   let change = 1;
-  if (st.speedChange) { change = st.speedChange; max += st.overMax; } else if (home) { change = home.speedChange; max += home.overMax; }
+  if (home) { change = home.speedChange; max += home.overMax; }
+  if (st.speedChange) change = Math.max(change, st.speedChange);
   const clamp = (s) => Math.min(Math.max(s, min), max);
-  if (st.holdSpeed) return [clamp(ship.speed)];
-  if (st.mustSlow) return [clamp(ship.speed - 1)];
+  if (critCount(ship, 'engines')) return [clamp(ship.speed)];
   const top = ship.grappled ? ship.speed : ship.speed + change;
   const out = [];
   for (let s = ship.speed - change; s <= top; s++) if (s >= min && s <= max) out.push(s);
@@ -720,25 +762,32 @@ export function speedOptions(ship, stanceId = 'balanced') {
 
 // Turn clicks allowed per segment (speed 0: may rotate 1 click in place).
 // Some ships turn better at certain speeds (`clicksAtSpeed` in data.js).
-// Stance: Evasive +1; Trained helms (Protectorate) +1 more with Evasive or Full Burn;
-// Brace max 1. A ship with `disrupted` set (hit by a Disruptor last round) gets 1 less (min 0).
+// Wild Maneuvers +1. A ship with `disrupted` set (hit by a Pirate Disruptor last round) gets 1
+// less (min 0). Damaged Maneuvering Thrusters: 0 (the ship must fly straight).
 export function maxClicks(ship, speed, stanceId = 'balanced') {
+  if (critCount(ship, 'thrusters')) return 0;
   const def = shipDef(ship);
-  const st = STANCES[stanceId] || STANCES.balanced;
-  let n = speed === 0 ? 1 : def.clicksAtSpeed?.[speed] ?? def.clicks;
+  const st = stanceStats(stanceId);
+  let n = (speed === 0 ? 1 : def.clicksAtSpeed?.[speed] ?? def.clicks) + (captainOf(ship)?.clicks || 0);
   n += st.extraClicks || 0;
-  if (st.helms) n += FACTIONS[ship.faction].traits.trainedHelms || 0;
-  if (st.maxClicks !== undefined) n = Math.min(n, st.maxClicks);
-  return Math.max(0, n - (ship.disrupted ? 1 : 0) - critCount(ship, 'thrusters'));
+  return Math.max(0, n - (ship.disrupted ? 1 : 0));
 }
 
 // Emergency thrusters: a ship that hit the map edge or an asteroid last move (ship.recover) may
-// turn up to MOVE.recoverClicks extra in its FIRST segment, so it can turn away from the wall.
+// turn up to MOVE.recoverClicks extra in its FIRST segment, so it can turn away from the wall
+// (not with damaged Maneuvering Thrusters).
 export function segmentClicks(ship, speed, stanceId, i) {
+  if (critCount(ship, 'thrusters')) return 0;
   return maxClicks(ship, speed, stanceId) + (i === 0 && ship.recover ? MOVE.recoverClicks : 0);
 }
 
-// Move plan: { speed, clicks, stance: { id, zone?, target? } }.
+// Violent Turn: clicks allowed in the turn at the end of the move (0 for other stances).
+export function endTurnClicks(ship, stanceId) {
+  if (critCount(ship, 'thrusters')) return 0;
+  return stanceStats(stanceId).endTurnClicks || 0;
+}
+
+// Move plan: { speed, clicks, stance: { id, zone? }, endTurn? }.
 export function defaultMovePlan(ship) {
   const opts = speedOptions(ship);
   const speed = opts.includes(ship.speed) ? ship.speed : opts[0];
@@ -751,6 +800,7 @@ export function sanitizeStance(ship, st, ships) {
   if (!st || !stanceOptions(ship).includes(st.id)) return null;
   const def = STANCES[st.id];
   const out = { id: st.id };
+  if (st.wild && canAddWild(ship, st.id)) out.wild = true;
   if (def.needsZone) {
     if (!ZONES.includes(st.zone)) return null;
     out.zone = st.zone;
@@ -767,18 +817,23 @@ export function sanitizeMovePlan(ship, plan, ships = [], squads = []) {
   if (!plan) return null;
   const stance = plan.stance ? sanitizeStance(ship, plan.stance, ships) : { id: 'balanced' };
   if (!stance) return null;
-  if (!Number.isInteger(plan.speed) || !speedOptions(ship, stance.id).includes(plan.speed)) return null;
+  if (!Number.isInteger(plan.speed) || !speedOptions(ship, stance).includes(plan.speed)) return null;
   const n = Math.max(1, plan.speed);
   if (!Array.isArray(plan.clicks) || plan.clicks.length !== n) return null;
-  if (!plan.clicks.every((c, i) => Number.isInteger(c) && Math.abs(c) <= segmentClicks(ship, plan.speed, stance.id, i))) return null;
+  if (!plan.clicks.every((c, i) => Number.isInteger(c) && Math.abs(c) <= segmentClicks(ship, plan.speed, stance, i))) return null;
   const out = { speed: plan.speed, clicks: plan.clicks.slice(), stance };
+  const et = endTurnClicks(ship, stance);
+  if (et && plan.endTurn) {
+    if (!Number.isInteger(plan.endTurn) || Math.abs(plan.endTurn) > et) return null;
+    out.endTurn = plan.endTurn;
+  }
   if (plan.mine && specialLeft(ship, 'mineDrop') > 0) out.mine = true;
   // Carriers: optional new order for each of its living squadrons (left out or invalid = keep the
   // old one). Comms Down is checked by the TV when the orders are applied.
   if (isCarrier(ship) && plan.squads && typeof plan.squads === 'object') {
     const orders = {};
     for (const q of wingOf(ship.id, squads)) {
-      const o = sanitizeSquadOrder(q, plan.squads[q.id], ships);
+      const o = sanitizeSquadOrder(q, plan.squads[q.id], [...ships, ...squads]);
       if (o) orders[q.id] = o;
     }
     if (Object.keys(orders).length) out.squads = orders;
@@ -787,8 +842,19 @@ export function sanitizeMovePlan(ship, plan, ships = [], squads = []) {
 }
 
 // Where the ship is at time t (0..1) of the Move phase if nothing blocks it.
-// Each segment: turn first, then fly straight for 2 u.
+// Each segment: turn first, then fly straight for 2 u. Violent Turn (plan.endTurn): the path takes
+// the first part of the time, then the ship turns in place at the end.
 export function poseAt(start, plan, t) {
+  if (plan.endTurn) {
+    const T = 1 - MOVE.endTurnShare;
+    if (t <= T) return pathPose(start, plan, t / T);
+    const end = pathPose(start, plan, 1);
+    return { ...end, heading: end.heading + plan.endTurn * MOVE.clickDegrees * Math.min(1, (t - T) / (1 - T)) };
+  }
+  return pathPose(start, plan, t);
+}
+
+function pathPose(start, plan, t) {
   const L = MOVE.segmentLength, D = MOVE.clickDegrees;
   let x = start.x, y = start.y, h = start.heading;
   const s = plan.speed;
@@ -829,16 +895,18 @@ export function pathHazard(ship, plan, map, asteroids = []) {
   return null;
 }
 
-// Pose at the end of every segment (for the ghost path on the phone).
+// Pose at the end of every segment (for the ghost path on the phone). The last point includes a
+// Violent Turn's end turn.
 export function planWaypoints(start, plan) {
   const n = Math.max(1, plan.speed);
   const pts = [{ x: start.x, y: start.y, heading: start.heading }];
-  for (let k = 1; k <= n; k++) pts.push(poseAt(start, plan, k / n));
+  for (let k = 1; k < n; k++) pts.push(pathPose(start, plan, k / n));
+  pts.push(poseAt(start, plan, 1));
   return pts;
 }
 
-// Shields absorb in this order: Shield Charge's temporary +2 (ship.tempShields), then the
-// zone's own shields (unless switched off by the stance), then hull. Mutates the ship.
+// Shields absorb in this order: temporary shields (ship.tempShields, unused right now), then the
+// zone's own shields (unless the Shield Generator is damaged), then hull. Mutates the ship.
 // `tempLost` = temporary shields used up (shown as shield damage on the TV, never restored).
 function absorb(ship, zone, amount) {
   const temp = Math.min(ship.tempShields?.[zone] || 0, amount);
@@ -1067,10 +1135,27 @@ export function sizeForPlayers(n) {
   return (BATTLE_SIZES.find((s) => n >= s.players[0] && n <= s.players[1]) || BATTLE_SIZES[BATTLE_SIZES.length - 1]).id;
 }
 
-// A player's fleet = [{ type, wing: [squadron types] }] (wing only for carriers).
+// A player's fleet = [{ type, wing: [squadron types], captain?, wingCaptains?: [captain id or null per squadron] }]
+// (wing only for carriers).
+const capCost = (id) => CAPTAINS[id]?.cost || 0;
 export function fleetCost(entries) {
-  return entries.reduce((n, e) => n + (SHIPS[e.type]?.cost || 0)
-    + (e.wing || []).reduce((m, q) => m + (SQUADRONS[q]?.cost || 0), 0), 0);
+  return entries.reduce((n, e) => n + (SHIPS[e.type]?.cost || 0) + capCost(e.captain)
+    + (e.wing || []).reduce((m, q, k) => m + (SQUADRONS[q]?.cost || 0) + capCost(e.wingCaptains?.[k]), 0), 0);
+}
+
+// Why captain `capId` can't go on mine[index] (or, with `slot`, on that squadron of it), or null.
+// A ship or squadron that already has a captain swaps it (only the price difference counts).
+export function captainProblem(capId, mine, index, share, slot = null) {
+  const e = mine[index];
+  if (!e || !CAPTAINS[capId]) return 'No such captain';
+  const squad = slot !== null;
+  if (squad && !e.wing?.[slot]) return 'No such squadron';
+  const type = squad ? e.wing[slot] : e.type;
+  if (!captainChoices(type, squad).includes(capId)) return 'Can\'t take that captain';
+  const cur = squad ? e.wingCaptains?.[slot] : e.captain;
+  if (cur === capId) return 'Already aboard';
+  if (fleetCost(mine) - capCost(cur) + capCost(capId) > share) return 'Not enough points';
+  return null;
 }
 
 // Why `type` can't be bought right now, or null if it can.

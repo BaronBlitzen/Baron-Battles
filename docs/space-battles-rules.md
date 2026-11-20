@@ -187,7 +187,7 @@ Movement). Stances are revealed on the TV when the Move starts. A stance lasts t
 | **Hunter** | Offense | Mark an enemy ship: **+1 shot on every weapon** aimed at it **and reroll misses** against it; it **can't use Evasive** against you | You may **only attack that ship** |
 | **Damage Control** | Recovery | End of round: restore **2 shields** (spread as you like) **or 1 hull**, **or remove 1 critical** | **Must slow down by 1** (unless at 0–1); **−1 shot** on every arc |
 
-**No repeats:** a ship can't pick the same stance two rounds in a row (Balanced is the exception).
+~~**No repeats**~~: removed. Any stance can be picked every round (see ships v3).
 
 ### Stances by class
 

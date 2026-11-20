@@ -4,16 +4,20 @@
 import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, CLASSES, WEAPONS, ZONES, ARCS, ARC_DEFS, ZONE_NAMES, RANGE_BANDS, SHIPS, FLEET,
-  STANCES, CLASS_STANCES, CRITICALS, SQUADRONS, SQUADRON_ROLES, SQUADRON, SQUAD_ORDERS, SQUAD_ORDER_LIST,
-  HIT, SPECIALS,
+  STANCES, CRITICALS, SQUADRONS, SQUADRON_ROLES, SQUADRON, SQUAD_ORDERS, SQUAD_ORDER_LIST,
+  HIT, SPECIALS, CAPTAINS, CRIT_POOL,
 } from './data.js';
 import {
   classOf, shipDef, corners, speedOptions, maxClicks, segmentClicks, defaultMovePlan, planWaypoints, pathHazard,
   weaponTargets, weaponUsedUp, defaultFirePlan, arcWeapons, factionShipTypes, pointShare, fleetCost, buyProblem,
-  stanceOptions, huntTarget, repairOf, maxSpeed, isSquad, squadDef, unitName,
+  stanceOptions, shipStances, maxSpeed, isSquad, squadDef, unitName, endTurnClicks, weaponOffline, boostCap,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
-  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets,
+  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf,
+  captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf,
 } from './rules.js';
+
+// "🛡 Samuel Verity" style captain tag (empty without a captain).
+const captainTag = (u) => { const c = captainOf(u); return c ? `${c.icon} ${c.name}` : ''; };
 
 const BAND_INDEX = Object.fromEntries(RANGE_BANDS.map((b, i) => [b.id, i]));
 // "Reach ●●○" style dots for a weapon (filled up to its reach).
@@ -24,11 +28,12 @@ function weaponTags(wd) {
   if (wd.pd) t.push('PD');
   if (wd.once) t.push('Once');
   if (wd.critOn) t.push(`Crits ${wd.critOn}+`);
-  const fx = { ion: 'Ion', acid: 'Acid', grapple: 'Grapple', disrupt: 'Disrupt', board: 'Boarding' }[wd.effect];
+  if (wd.ignoreShields) t.push('Ignores shields');
+  const fx = { ion: 'Ion', acid: 'Acid', grapple: 'Grapple', disrupt: 'Disrupt', board: 'Boarding', crit: 'Causes a crit' }[wd.effect];
   if (fx) t.push(fx);
   return t;
 }
-const dmgText = (wd, shots) => `${wd.effect === 'ion' ? '⛨' : wd.damage}×${shots}`;
+const dmgText = (wd, shots) => `${wd.effect === 'ion' ? '⛨' : wd.effect === 'crit' ? '💥' : wd.damage}×${shots}`;
 
 const BAND_NAMES = Object.fromEntries(RANGE_BANDS.map((b) => [b.id, b.name]));
 const VIEW_W = 18, VIEW_H = 12; // mini-map window, in units
@@ -48,6 +53,7 @@ export function mount({ container, me, sendInput }) {
   let fireDraft = {}; // shipId -> { [arc]: { [weaponIndex]: targetId } } (left out = hold fire)
   let repairDraft = {}; // shipId -> Damage Control choice { kind, zones? } (none = default)
   let holdDraft = {}; // shipId -> Smuggler's Hold choice { target, kind } (none = not used)
+  let critDraft = {}; // shipId -> critical system id (Seir-Seir; none = random)
   let selShip = null;
   let selSeg = 0;
   let selRow = 0;
@@ -76,6 +82,7 @@ export function mount({ container, me, sendInput }) {
     fireDraft = {};
     repairDraft = {};
     holdDraft = {};
+    critDraft = {};
     for (const s of myLiving()) {
       moveDraft[s.id] = defaultMovePlan(s);
       if (hasWing(s)) moveDraft[s.id].squads = Object.fromEntries(wingSquads(s.id).filter((q) => q.alive).map((q) => [q.id, { ...q.order }]));
@@ -108,15 +115,18 @@ export function mount({ container, me, sendInput }) {
     const out = [];
     if (s.stance) {
       const st = STANCES[s.stance.id];
-      out.push(`${st.icon} Stance this round: ${escapeHtml(st.name)}${s.stance.zone ? ` (${ZONE_NAMES[s.stance.zone]})` : ''}`);
+      out.push(`Stance this round: ${s.stance.wild ? `${STANCES.wild.icon} ${STANCES.wild.name} + ` : ''}${st.icon} ${escapeHtml(st.name)}${s.stance.zone ? ` (${ZONE_NAMES[s.stance.zone]})` : ''}`);
     }
-    if (s.lastStance && s.lastStance !== 'balanced' && state.phase === 'planMove') {
-      out.push(`⛔ Can't use ${escapeHtml(STANCES[s.lastStance].name)} again this round`);
-    }
+    if (captainOf(s)) out.push(`${escapeHtml(captainTag(s))}: ${escapeHtml(captainOf(s).desc)}`);
     for (const c of s.crits || []) {
       const cd = CRITICALS[c.id];
-      const where = c.zone ? ` (${ZONE_NAMES[c.zone]} zone)` : '';
-      out.push(`${cd.icon} ${escapeHtml(cd.name)}${where}: ${escapeHtml(cd.desc)}${c.fresh && cd.nextRound ? ' Starts next round.' : ''}`);
+      if (!cd) continue;
+      const what = c.weapon ? ` (${WEAPONS[c.weapon].name})` : '';
+      out.push(`${cd.icon} Damaged ${escapeHtml(cd.name)}${escapeHtml(what)}: ${escapeHtml(cd.desc)}${c.fresh && cd.nextRound ? ' Starts next round.' : ''}`);
+    }
+    if (s.boost) {
+      const over = s.shields[s.boost.zone] - shipDef(s).shields[s.boost.zone];
+      if (over > 0) out.push(`⚡ Shield Boost: ${over} extra ${ZONE_NAMES[s.boost.zone]} shield${over > 1 ? 's' : ''}, lost at the end of ${s.boost.until === state.round ? 'this' : 'next'} round`);
     }
     if (s.disrupted) out.push('⚡ Disrupted: 1 turn click less per segment this move');
     if (s.grappled) out.push('⚓ Grappled: can\'t speed up this move');
@@ -128,7 +138,8 @@ export function mount({ container, me, sendInput }) {
       if (!q.alive) { out.push(`✈ ${escapeHtml(squadLabel(q))}: destroyed`); continue; }
       const o = SQUAD_ORDERS[q.order.order];
       const ot = q.order.target && shipById(q.order.target);
-      out.push(`✈ ${escapeHtml(squadLabel(q))} ${q.hull}/${squadDef(q).hull}: ${q.docked ? '🏠 docked' : `${o.icon} ${escapeHtml(o.name)}${ot ? ` → ${escapeHtml(shipDef(ot).short)}` : ''}`}`);
+      const ot2 = ot || (q.order.target && squads().find((x) => x.id === q.order.target));
+      out.push(`✈ ${escapeHtml(squadLabel(q))} ${craftText(q)}: ${q.docked ? '🏠 docked' : `${o.icon} ${escapeHtml(o.name)}${ot2 ? ` → ${escapeHtml(unitName(ot2))}` : ''}`}`);
     }
     for (const arc of ARCS) {
       arcWeapons(s, arc).forEach((w, wi) => {
@@ -154,13 +165,13 @@ export function mount({ container, me, sendInput }) {
       <ul class="sbp-fleet">
         ${mine.map((s) => {
           const def = shipDef(s);
-          const frac = Math.max(0, s.hull / def.hull);
+          const frac = Math.max(0, s.hull / maxHull(s));
           return `
             <li class="${s.alive ? '' : 'dead'}">
-              <div class="sbp-fleet-top"><b>${escapeHtml(def.name)}</b><small>${escapeHtml(CLASSES[def.class].name)}</small></div>
+              <div class="sbp-fleet-top"><b>${escapeHtml(def.name)}${s.letter ? ` ${s.letter}` : ''}</b><small>${escapeHtml(CLASSES[def.class].name)}</small></div>
               ${s.alive ? `
                 <div class="sbp-bar"><span style="width:${frac * 100}%;background:${frac > 0.5 ? 'var(--green)' : frac > 0.25 ? '#fcc419' : 'var(--red)'}"></span></div>
-                <div class="sbp-stats">Hull ${s.hull}/${def.hull} · Speed ${s.speed} <small>(${def.speed[0]}–${maxSpeed(s)}${maxSpeed(s) < def.speed[1] ? ", engines damaged" : ""})</small></div>
+                <div class="sbp-stats">Hull ${s.hull}/${maxHull(s)} · Speed ${s.speed} <small>(${def.speed[0]}–${maxSpeed(s)})</small></div>
                 <div class="sbp-stats">Shields ${shieldText(s.shields)}</div>
                 ${statusLines(s).map((x) => `<div class="sbp-status">${x}</div>`).join('')}` : '<div class="sbp-stats red">Destroyed</div>'}
             </li>`;
@@ -172,7 +183,7 @@ export function mount({ container, me, sendInput }) {
     const living = myLiving();
     if (living.length < 2) return '';
     return `<div class="sbp-tabs">${living.map((s) => `
-      <button data-act="ship" data-id="${s.id}" class="${s.id === selShip ? 'on' : ''}">${escapeHtml(shipDef(s).short)}</button>`).join('')}</div>`;
+      <button data-act="ship" data-id="${s.id}" class="${s.id === selShip ? 'on' : ''}">${escapeHtml(unitName(s))}</button>`).join('')}</div>`;
   }
 
   function readyBar(label) {
@@ -214,13 +225,36 @@ export function mount({ container, me, sendInput }) {
 
   // Squadron types a carrier can hold (shown in the carrier's details).
   function squadronLines(type) {
-    const prof = (p) => (p ? `${p.damage}×${p.shots}` : '—');
     return `
       <p class="sbp-small"><b>Carries up to ${carrierSlots(type)} squadrons</b> (bought below the ship in My fleet):</p>
       <ul class="sbp-weapons">${carrierSquadTypes(type).map((t) => {
         const q = SQUADRONS[t];
-        return `<li><b>${escapeHtml(q.name)}</b> <small>${SQUADRON_ROLES[q.role].name} · ${q.cost} pts · hull ${q.hull} · speed ${q.speed} u${q.role !== 'boarding' ? ` · vs squadrons ${prof(q.vsSquadron)} · vs ships ${prof(q.vsShip)}${q.crit ? ', crits on 10' : ''}` : ''}</small><br><span>${escapeHtml(q.desc)}</span></li>`;
+        const extras = [q.accuracy ? `${q.accuracy > 0 ? '+' : '−'}${Math.abs(q.accuracy)} accuracy` : '', q.ignoreShields ? 'ignores shields' : '', q.crit ? 'crits on 10' : ''].filter(Boolean);
+        return `<li><b>${escapeHtml(q.name)}</b> <small>${SQUADRON_ROLES[q.role].name} · ${q.cost} pts · ${q.craft} craft (1 hull${q.shield ? ', 1 shield' : ', no shield'} each) · speed ${q.speed} u · ${escapeHtml(q.weapon)}: ${q.damage} dmg per craft, close range${extras.length ? ` · ${extras.join(', ')}` : ''}</small><br><span>${escapeHtml(q.desc)}</span></li>`;
       }).join('')}</ul>`;
+  }
+
+  // Captain choices for a ship in My fleet (or, with `slot`, one of its squadrons).
+  function captainRow(e, i, info, slot = null) {
+    const squad = slot !== null;
+    const type = squad ? e.wing[slot] : e.type;
+    const choices = captainChoices(type, squad);
+    if (!choices.length) return '';
+    const cur = squad ? e.wingCaptains?.[slot] : e.captain;
+    const k = squad ? ` data-k="${slot}"` : '';
+    const act = squad ? 'squadCaptain' : 'captain';
+    return `
+      <li class="sbp-wingrow">
+        <small>${squad ? `${escapeHtml(SQUADRONS[type].short)} squadron captain` : 'Captain'}${cur ? `: <b>${escapeHtml(CAPTAINS[cur].icon)} ${escapeHtml(CAPTAINS[cur].name)}</b> · ${escapeHtml(CAPTAINS[cur].desc)}` : ' (optional upgrade)'}</small>
+        <div class="sbp-wingbuy">
+          ${cur ? `<button data-act="${act}" data-i="${i}"${k} data-c="">No captain<small>−${CAPTAINS[cur].cost} pts</small></button>` : ''}
+          ${choices.filter((c) => c !== cur).map((c) => {
+            const p = captainProblem(c, info.mine, i, info.share, slot);
+            return `<button data-act="${act}" data-i="${i}"${k} data-c="${c}" ${p ? 'disabled' : ''} title="${escapeHtml(CAPTAINS[c].desc)}">${escapeHtml(CAPTAINS[c].icon)} ${escapeHtml(CAPTAINS[c].short)}<small>${CAPTAINS[c].cost} pts</small></button>`;
+          }).join('')}
+        </div>
+        ${!cur ? `<small class="muted">${choices.map((c) => `${escapeHtml(CAPTAINS[c].short)}: ${escapeHtml(CAPTAINS[c].desc)}`).join('<br>')}</small>` : ''}
+      </li>`;
   }
 
   // Squadron slots under a carrier in My fleet: remove chips + buy buttons.
@@ -230,7 +264,7 @@ export function mount({ container, me, sendInput }) {
     return `
       <li class="sbp-wingrow">
         <small>Squadrons ${e.wing.length}/${slots}${e.wing.length ? ' · tap one to remove it' : ''}</small>
-        ${e.wing.length ? `<div class="sbp-wingchips">${e.wing.map((q, k) => `<button data-act="removeSquad" data-i="${i}" data-k="${k}">${escapeHtml(SQUADRONS[q].short)} ✕</button>`).join('')}</div>` : ''}
+        ${e.wing.length ? `<div class="sbp-wingchips">${e.wing.map((q, k) => `<button data-act="removeSquad" data-i="${i}" data-k="${k}">${escapeHtml(SQUADRONS[q].short)}${e.wingCaptains?.[k] ? ` ${escapeHtml(CAPTAINS[e.wingCaptains[k]].icon)}` : ''} ✕</button>`).join('')}</div>` : ''}
         ${e.wing.length < slots ? `<div class="sbp-wingbuy">${carrierSquadTypes(e.type).map((t) => {
           const p = squadBuyProblem(t, info.myTeam, info.mine, i, info.share);
           return `<button data-act="buySquad" data-i="${i}" data-t="${t}" ${p ? 'disabled' : ''}>+ ${escapeHtml(SQUADRONS[t].short)}<small>${SQUADRONS[t].cost} pts</small></button>`;
@@ -283,8 +317,8 @@ export function mount({ container, me, sendInput }) {
           <h3 class="sbp-h">My fleet</h3>
           ${mine.length ? `<ul class="sbp-claims">
             ${mine.map((e, i) => `<li class="mine"><div><b>${escapeHtml(SHIPS[e.type].name)}</b>
-              <small>${escapeHtml(CLASSES[SHIPS[e.type].class].name)} · ${SHIPS[e.type].cost} pts${e.wing.length ? ` + ${fleetCost([{ type: '', wing: e.wing }])} pts squadrons` : ''}</small></div>
-              <button data-act="remove" data-i="${i}">Remove</button></li>${wingRow(e, i, info)}`).join('')}
+              <small>${escapeHtml(CLASSES[SHIPS[e.type].class].name)} · ${SHIPS[e.type].cost} pts${e.captain ? ` + ${CAPTAINS[e.captain].cost} pts captain` : ''}${e.wing.length ? ` + ${fleetCost([{ type: '', wing: e.wing, wingCaptains: e.wingCaptains }])} pts squadrons` : ''}</small></div>
+              <button data-act="remove" data-i="${i}">Remove</button></li>${captainRow(e, i, info)}${wingRow(e, i, info)}${e.wing.map((_, k) => captainRow(e, i, info, k)).join('')}`).join('')}
           </ul>` : '<p class="muted sbp-small">No ships yet. Buy some below. Unspent points are lost.</p>'}
           <button class="big-btn sbp-ready ${isReady() ? 'ghost' : ''}" data-act="setupReady" ${mine.length && !over ? '' : 'disabled'}>
             ${isReady() ? '✔ Ready (tap to undo)' : over ? 'Over budget' : mine.length ? 'Ready' : 'Buy a ship first'}</button>
@@ -319,40 +353,43 @@ export function mount({ container, me, sendInput }) {
     return `${c < 0 ? 'Left' : 'Right'} ${Math.abs(c)} <small>(${Math.abs(c) * 15}°)</small>`;
   }
 
-  // Stance grid (+ zone picker for Shield Charge, target picker for Hunter).
+  // Stance grid (+ side picker for Shield Boost).
   function stancePicker(s, d) {
     const allowed = stanceOptions(s);
-    const classList = ['balanced', ...(CLASS_STANCES[shipDef(s).class] || [])];
+    const list = shipStances(s);
     const cur = d.stance.id;
-    const enemies = state.ships.filter((t) => t.alive && t.faction !== s.faction)
-      .map((t) => ({ t, dist: Math.hypot(t.x - s.x, t.y - s.y) })).sort((a, b) => a.dist - b.dist);
+    const bridge = critCount(s, 'bridge') > 0;
     return `
       <h3 class="sbp-h">Stance <small class="muted">secret until the Move</small></h3>
+      ${bridge ? '<p class="sbp-burn">🧭 Bridge damaged: the only stance you can pick is Critical Repairs.</p>' : ''}
       <div class="sbp-stances">
-        ${classList.map((id) => {
+        ${list.map((id) => {
           const st = STANCES[id];
           const blocked = !allowed.includes(id);
           return `<button data-act="stance" data-s="${id}" class="${cur === id ? 'on' : ''}" ${blocked ? 'disabled' : ''}>
-            <span class="sbp-st-icon">${st.icon}</span><b>${escapeHtml(st.name)}</b>${blocked ? '<small>used last round</small>' : ''}</button>`;
+            <span class="sbp-st-icon">${st.icon}</span><b>${escapeHtml(st.name)}</b>${blocked ? '<small>bridge damaged</small>' : ''}</button>`;
         }).join('')}
       </div>
-      <p class="sbp-small sbp-st-desc">${escapeHtml(STANCES[cur].desc)}</p>
+      ${canAddWild(s, cur) ? `
+        <button class="sbp-target ${d.stance.wild ? 'on' : ''}" data-act="stanceWild">
+          <span>🐬 Shuna: add ${STANCES.wild.icon} ${escapeHtml(STANCES.wild.name)} too</span><span>${d.stance.wild ? '✔' : ''}</span></button>` : ''}
+      <p class="sbp-small sbp-st-desc">${escapeHtml(STANCES[cur].desc)}${d.stance.wild && canAddWild(s, cur) ? ` Plus Wild Maneuvers: ${escapeHtml(STANCES.wild.desc)}` : ''}</p>
+      ${cur === 'repairs' && !(s.crits || []).length ? '<p class="sbp-small muted">This ship has no critical hits to repair.</p>' : ''}
       ${STANCES[cur].needsZone ? `
         <div class="sbp-zones">${ZONES.map((z) => `
-          <button data-act="stanceZone" data-z="${z}" class="${d.stance.zone === z ? 'on' : ''}">${ZONE_NAMES[z]} <small>${s.shields[z]}→${s.shields[z] + STANCES[cur].chargeShields}</small></button>`).join('')}
-        </div>` : ''}
-      ${STANCES[cur].needsTarget ? `
-        <div class="sbp-hunt">${enemies.length ? enemies.map(({ t, dist }) => `
-          <button class="sbp-target ${d.stance.target === t.id ? 'on' : ''}" data-act="stanceTarget" data-id="${t.id}">
-            <span><span class="dot" style="background:${person(t.owner).color}"></span>${escapeHtml(shipDef(t).short)} <small>${escapeHtml(person(t.owner).name)}</small></span>
-            <span>${dist.toFixed(1)} u away ${d.stance.target === t.id ? '🎯' : ''}</span></button>`).join('') : '<p class="muted sbp-small">No enemy ships</p>'}
+          <button data-act="stanceZone" data-z="${z}" class="${d.stance.zone === z ? 'on' : ''}">${ZONE_NAMES[z]} <small>${s.shields[z]}→${Math.min(boostCap(s, z), s.shields[z] + STANCES[cur].boostShields)} (max ${shipDef(s).shields[z]})</small></button>`).join('')}
         </div>` : ''}`;
   }
 
-  // A squadron's name in its carrier ("Hawk 2" when there are two Hawks).
+  // A squadron's name ("Fighters B" when the side has several Fighters), plus its captain.
   function squadLabel(q) {
-    const same = wingSquads(q.carrier).filter((o) => o.type === q.type);
-    return `${squadDef(q).short}${same.length > 1 ? ` ${same.indexOf(q) + 1}` : ''}`;
+    return `${squadDef(q).short}${q.letter ? ` ${q.letter}` : ''}${captainOf(q) ? ` ${captainOf(q).icon} ${captainOf(q).short}` : ''}`;
+  }
+
+  // "3/4 craft, 2 shielded".
+  function craftText(q) {
+    const def = squadDef(q);
+    return `${q.hull}/${def.craft} craft${def.shield ? `, ${q.shields ?? 0} shielded` : ''}`;
   }
 
   // Orders this squadron may get now (Stay docked only while docked, Return only once launched).
@@ -364,14 +401,8 @@ export function mount({ container, me, sendInput }) {
   function squadPicker(s, d) {
     if (!hasWing(s)) return '';
     const living = wingSquads(s.id).filter((q) => q.alive);
-    if (critCount(s, 'comms')) {
-      return `
-        <h3 class="sbp-h">Squadrons</h3>
-        <p class="sbp-burn">📡 Comms Down: squadrons keep their orders (docked ones stay docked) until repaired.</p>
-        ${living.map((q) => `<p class="sbp-small">${escapeHtml(squadLabel(q))}: ${SQUAD_ORDERS[q.order.order].icon} ${escapeHtml(SQUAD_ORDERS[q.order.order].name)}</p>`).join('')}`;
-    }
-    const enemies = state.ships.filter((t) => t.alive && t.faction !== s.faction)
-      .map((t) => ({ t, dist: Math.hypot(t.x - s.x, t.y - s.y) })).sort((a, b) => a.dist - b.dist);
+    // Attack targets: enemy ships, then launched enemy squadrons, nearest first.
+    const enemies = attackTargets(s);
     return `
       <h3 class="sbp-h">Squadrons <small class="muted">each gets its own order</small></h3>
       ${living.map((q) => {
@@ -380,7 +411,7 @@ export function mount({ container, me, sendInput }) {
         const sd = squadDef(q);
         return `
           <div class="sbp-arc ${launching ? 'on' : ''}">
-            <div class="sbp-arc-head"><b>${escapeHtml(squadLabel(q))} <small>${SQUADRON_ROLES[sd.role].name} · hull ${q.hull}/${sd.hull}</small></b>
+            <div class="sbp-arc-head"><b>${escapeHtml(squadLabel(q))} <small>${SQUADRON_ROLES[sd.role].name} · ${craftText(q)}</small></b>
               <small>${q.docked ? (launching ? '🚀 Launching' : '🏠 Docked') : 'In space'}</small></div>
             <div class="sbp-sqorders">${ordersFor(q).map((id) => `
               <button data-act="squadOrder" data-q="${q.id}" data-o="${id}" class="${cur.order === id ? 'on' : ''}">${SQUAD_ORDERS[id].icon} ${escapeHtml(SQUAD_ORDERS[id].name)}</button>`).join('')}
@@ -388,7 +419,7 @@ export function mount({ container, me, sendInput }) {
             ${SQUAD_ORDERS[cur.order].needsTarget ? `
               <div class="sbp-hunt">${enemies.map(({ t, dist }) => `
                 <button class="sbp-target ${cur.target === t.id ? 'on' : ''}" data-act="squadTarget" data-q="${q.id}" data-id="${t.id}">
-                  <span><span class="dot" style="background:${person(t.owner).color}"></span>${escapeHtml(shipDef(t).short)} <small>${escapeHtml(person(t.owner).name)}</small></span>
+                  <span><span class="dot" style="background:${person(t.owner).color}"></span>${isSquad(t) ? '✈ ' : ''}${escapeHtml(unitName(t))} <small>${escapeHtml(person(t.owner).name)}</small></span>
                   <span>${dist.toFixed(1)} u ${cur.target === t.id ? '⚔' : ''}</span></button>`).join('')}
               </div>` : ''}
           </div>`;
@@ -397,8 +428,16 @@ export function mount({ container, me, sendInput }) {
   }
 
   const q0Hint = (living) => (living.some((q) => q.docked)
-    ? 'Pick Escort, Attack or Intercept to launch a docked squadron. It appears behind the carrier after the ships move.'
+    ? 'Pick Attack or Intercept to launch a docked squadron. It appears behind the carrier after the ships move.'
     : 'Return flies a squadron back to dock in the carrier.');
+
+  // What a carrier's squadrons may Attack: living enemy ships, then launched enemy squadrons.
+  function attackTargets(s) {
+    const d = (t) => Math.hypot(t.x - s.x, t.y - s.y);
+    const shipsList = state.ships.filter((t) => t.alive && t.faction !== s.faction);
+    const sqList = squads().filter((q) => q.alive && !q.docked && q.faction !== s.faction);
+    return [...shipsList.sort((a, b) => d(a) - d(b)), ...sqList.sort((a, b) => d(a) - d(b))].map((t) => ({ t, dist: d(t) }));
+  }
 
   function setSquadOrder(qid, order, target) {
     const s = shipById(selShip);
@@ -408,10 +447,9 @@ export function mount({ container, me, sendInput }) {
     const cur = d.squads?.[qid] || q.order;
     const o = { order };
     if (SQUAD_ORDERS[order].needsTarget) {
-      const near = state.ships.filter((t) => t.alive && t.faction !== s.faction)
-        .sort((a, b) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(b.x - s.x, b.y - s.y))[0];
-      const keep = state.ships.find((t) => t.id === (target || cur.target) && t.alive && t.faction !== s.faction);
-      o.target = keep?.id || near?.id;
+      const list = attackTargets(s).map((x) => x.t);
+      const keep = list.find((t) => t.id === (target || cur.target));
+      o.target = keep?.id || list[0]?.id;
       if (!o.target) return;
     }
     (d.squads || (d.squads = {}))[qid] = o;
@@ -421,13 +459,13 @@ export function mount({ container, me, sendInput }) {
   function viewPlanMove() {
     const s = shipById(selShip);
     const d = moveDraft[s.id];
-    const opts = speedOptions(s, d.stance.id);
-    const mc = maxClicks(s, d.speed, d.stance.id);
+    const opts = speedOptions(s, d.stance);
+    const mc = maxClicks(s, d.speed, d.stance);
     return `
       ${header()}
       <div class="sbp-body">
         ${shipTabs()}
-        <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}</b> <small class="muted">Hull ${s.hull} · ${shieldText(s.shields)}</small></div>
+        <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}${s.letter ? ` ${s.letter}` : ""}</b> <small class="muted">Hull ${s.hull} · ${shieldText(s.shields)}</small></div>
         ${stancePicker(s, d)}
         ${squadPicker(s, d)}
         ${specialLeft(s, 'mineDrop') > 0 ? `
@@ -436,7 +474,9 @@ export function mount({ container, me, sendInput }) {
         ${s.burn ? '<p class="sbp-burn">🚀 Every ship is home: free Full Burn this round. Change speed by up to 2, up to 1 over max.</p>' : ''}
         ${s.disrupted ? '<p class="sbp-burn">⚡ Disrupted: 1 turn click less per segment this round.</p>' : ''}
         ${s.grappled ? '<p class="sbp-burn">⚓ Grappled: can\'t speed up this round.</p>' : ''}
-        ${s.recover ? '<p class="sbp-burn">🛟 Emergency thrusters: you hit something last move, so segment 1 can turn up to 90° extra.</p>' : ''}
+        ${s.recover && !critCount(s, 'thrusters') ? '<p class="sbp-burn">🛟 Emergency thrusters: you hit something last move, so segment 1 can turn up to 90° extra.</p>' : ''}
+        ${critCount(s, 'thrusters') ? '<p class="sbp-burn">↺ Maneuvering Thrusters damaged: can\'t turn, the ship flies straight.</p>' : ''}
+        ${critCount(s, 'engines') ? '<p class="sbp-burn">⚙ Main Engines damaged: can\'t change speed.</p>' : ''}
         ${(() => { const hz = pathHazard(s, d, state.map, state.asteroids); return hz ? `<p class="sbp-burn sbp-warn">⚠ This path hits ${hz.kind === 'edge' ? 'the map edge' : 'an asteroid'} in segment ${hz.segment} (2 damage, and you stop). Turn or slow down.</p>` : ''; })()}
         <div class="sbp-speed">
           <button data-act="speed" data-d="-1" ${d.speed > opts[0] ? '' : 'disabled'}>−</button>
@@ -447,12 +487,19 @@ export function mount({ container, me, sendInput }) {
           ${d.clicks.map((c, i) => `
             <li class="${i === selSeg ? 'on' : ''}" data-act="seg" data-i="${i}">
               <span>Segment ${i + 1}</span>
-              <button data-act="turn" data-i="${i}" data-d="-1" ${c > -segmentClicks(s, d.speed, d.stance.id, i) ? '' : 'disabled'}>◀</button>
+              <button data-act="turn" data-i="${i}" data-d="-1" ${c > -segmentClicks(s, d.speed, d.stance, i) ? '' : 'disabled'}>◀</button>
               <b>${turnLabel(c)}</b>
-              <button data-act="turn" data-i="${i}" data-d="1" ${c < segmentClicks(s, d.speed, d.stance.id, i) ? '' : 'disabled'}>▶</button>
+              <button data-act="turn" data-i="${i}" data-d="1" ${c < segmentClicks(s, d.speed, d.stance, i) ? '' : 'disabled'}>▶</button>
             </li>`).join('')}
+          ${endTurnClicks(s, d.stance) ? `
+            <li class="${selSeg === d.clicks.length ? 'on' : ''}" data-act="seg" data-i="${d.clicks.length}">
+              <span>🌀 End turn</span>
+              <button data-act="endTurn" data-d="-1" ${(d.endTurn || 0) > -endTurnClicks(s, d.stance) ? '' : 'disabled'}>◀</button>
+              <b>${turnLabel(d.endTurn || 0)}</b>
+              <button data-act="endTurn" data-d="1" ${(d.endTurn || 0) < endTurnClicks(s, d.stance) ? '' : 'disabled'}>▶</button>
+            </li>` : ''}
         </ul>
-        <p class="muted sbp-small">Up to ${mc} click${mc > 1 ? 's' : ''} (${mc * 15}°) per segment${s.recover ? ', plus up to 6 more (90°) in segment 1' : ''}. Each segment turns first, then flies 2 u.</p>
+        <p class="muted sbp-small">Up to ${mc} click${mc === 1 ? '' : 's'} (${mc * 15}°) per segment${s.recover && !critCount(s, 'thrusters') ? ', plus up to 6 more (90°) in segment 1' : ''}. Each segment turns first, then flies 2 u.${endTurnClicks(s, d.stance) ? ' Violent Turn: after the move, turn up to 90° more (costs 1 hull).' : ''}</p>
         ${readyBar(myLiving().length > 1 ? 'Send orders for all ships' : 'Send orders')}
         ${fleetList()}
       </div>`;
@@ -473,58 +520,52 @@ export function mount({ container, me, sendInput }) {
     return rows;
   }
 
-  // Damage Control: pick the end-of-round repair (rules §5).
+  // Critical Repairs: pick which critical hit gets repaired at the end of the round.
   function repairPicker(s) {
-    if (s.stance?.id !== 'damageControl') return '';
-    const rep = repairOf(s);
-    const def = shipDef(s);
+    if (!STANCES[s.stance?.id]?.repairCrit) return '';
     const crits = s.crits || [];
-    const r = repairDraft[s.id] || null;
-    const zones = r?.kind === 'shields' ? r.zones : [];
-    const broken = (z) => crits.some((c) => c.id === 'shieldGen' && c.zone === z);
-    const critName = (c) => `${CRITICALS[c.id].icon} ${CRITICALS[c.id].name}${c.zone ? ` (${ZONE_NAMES[c.zone]})` : ''}`;
-    const dflt = crits.length ? `remove ${critName(crits[0])}`
-      : ZONES.some((z) => !broken(z) && s.shields[z] < def.shields[z]) ? `${rep.shields} shields to the weakest zones` : `${rep.hull} hull`;
-    // Which critical goes: the chosen one, else the oldest.
-    const showCrits = crits.length && (r?.kind === 'crit' || (rep.alsoRemoveCrit && r));
-    const critIdx = r?.crit ?? 0;
+    const critIdx = repairDraft[s.id]?.crit ?? 0;
+    const critName = (c) => `${CRITICALS[c.id]?.icon || ''} ${CRITICALS[c.id]?.name || c.id}${c.weapon ? ` (${WEAPONS[c.weapon].name})` : ''}`;
     return `
       <div class="sbp-arc on">
-        <div class="sbp-arc-head"><b>🔧 Damage Control</b><small>end of round${rep.alsoRemoveCrit ? ' · Samurai: also removes 1 critical' : ''}</small></div>
-        <div class="sbp-repair">
-          <button data-act="repair" data-k="shields" class="${r?.kind === 'shields' ? 'on' : ''}">+${rep.shields} shields</button>
-          <button data-act="repair" data-k="hull" class="${r?.kind === 'hull' ? 'on' : ''}" ${s.hull >= def.hull ? 'disabled' : ''}>+${rep.hull} hull</button>
-          <button data-act="repair" data-k="crit" class="${r?.kind === 'crit' ? 'on' : ''}" ${crits.length ? '' : 'disabled'}>Remove a critical</button>
-        </div>
-        ${r?.kind === 'shields' ? `
-          <p class="sbp-small">Tap a zone for each shield (${zones.length}/${rep.shields}). Shields can't go above their starting value.</p>
-          <div class="sbp-zones">${ZONES.map((z) => {
-            const n = zones.filter((x) => x === z).length;
-            return `<button data-act="repairZone" data-z="${z}" ${broken(z) || s.shields[z] + n >= def.shields[z] ? 'disabled' : ''}>${ZONE_NAMES[z]} <small>${broken(z) ? '✖ broken' : `${s.shields[z]}${n ? `+${n}` : ''}/${def.shields[z]}`}</small></button>`;
-          }).join('')}</div>
-          ${zones.length ? '<button class="sbp-sur-btn" data-act="repairClear">Clear zones</button>' : ''}` : ''}
-        ${showCrits ? `
-          <p class="sbp-small">Which critical to remove?</p>
+        <div class="sbp-arc-head"><b>🔧 Critical Repairs</b><small>end of round</small></div>
+        ${crits.length ? `
+          <p class="sbp-small">Which system to repair?</p>
           <div class="sbp-hunt">${crits.map((c, i) => `
             <button class="sbp-target ${i === critIdx ? 'on' : ''}" data-act="repairCrit" data-i="${i}"><span>${escapeHtml(critName(c))}</span><span>${i === critIdx ? '✔' : ''}</span></button>`).join('')}
-          </div>` : ''}
-        ${r ? '' : `<p class="sbp-small muted">If you don't choose: ${escapeHtml(dflt)}${rep.alsoRemoveCrit && crits.length > 1 ? ', and another critical' : ''}.</p>`}
+          </div>` : '<p class="sbp-small muted">Nothing to repair.</p>'}
       </div>`;
   }
 
   // What this ship's stance means for firing.
   function fireStanceNote(s) {
-    const st = STANCES[s.stance?.id || 'balanced'];
-    if (st.noFire) return `<p class="sbp-burn">${st.icon} ${escapeHtml(st.name)}: this ship can't fire this round.</p>`;
+    const st = stanceOf(s);
     const notes = [];
-    if (st.powerChange) notes.push(`${st.powerChange > 0 ? '+' : '−'}${Math.abs(st.powerChange)} Power`);
-    const off = critCount(s, 'weaponsOffline');
-    if (off) notes.push(`Weapons Offline −${off * CRITICALS.weaponsOffline.power} Power`);
-    const hunt = huntTarget(s) && shipById(huntTarget(s));
-    if (hunt) notes.push(`may only attack ${shipDef(hunt).short} (hits it on one lower)`);
+    const acc = accuracyOf(s);
+    if (acc) notes.push(`all weapons ${acc > 0 ? '+' : '−'}${Math.abs(acc)} accuracy`);
+    if (st.critOn) notes.push(`crits on ${st.critOn}+`);
+    if (st.squadAccuracy) notes.push(`your squadrons +${st.squadAccuracy} accuracy`);
+    if (st.doubleWeapons) notes.push(st.doubleWeapons === 'all' ? 'every weapon fires twice' : `${st.doubleWeapons.map((w) => WEAPONS[w].name).join(', ')} fires twice`);
+    const name = `${s.stance?.wild ? `${STANCES.wild.name} + ` : ''}${st.name}`;
+    const amelia = captainOf(s)?.alwaysCommand ? `<p class="sbp-burn">${escapeHtml(captainTag(s))}: your squadrons always get +${STANCES.command.squadAccuracy} accuracy.</p>` : '';
     const pd = shipDef(s).pd.length
-      ? '<p class="sbp-small muted">Point-defense is free and fires on its own at the nearest enemy squadron in close range.</p>' : '';
-    return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(st.name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + pd;
+      ? '<p class="sbp-small muted">Point-defense is free and fires on its own (yellow on the TV) at the nearest enemy squadron in close range.</p>' : '';
+    return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + amelia + pd;
+  }
+
+  // Seir-Seir: which system this ship's criticals damage this round (default: random).
+  function critPicker(s) {
+    if (!captainOf(s)?.pickCrit) return '';
+    const cur = critDraft[s.id] || '';
+    return `
+      <div class="sbp-arc on">
+        <div class="sbp-arc-head"><b>${escapeHtml(captainTag(s))}</b><small>your criticals this round hit…</small></div>
+        <div class="sbp-hunt">
+          <button class="sbp-target ${cur ? '' : 'on'}" data-act="critPick" data-c=""><span>🎲 Random</span><span>${cur ? '' : '✔'}</span></button>
+          ${CRIT_POOL.map((id) => `<button class="sbp-target ${cur === id ? 'on' : ''}" data-act="critPick" data-c="${id}"><span>${CRITICALS[id].icon} ${escapeHtml(CRITICALS[id].name)}</span><span>${cur === id ? '✔' : ''}</span></button>`).join('')}
+        </div>
+        <p class="sbp-small muted">If the target already has that system damaged, a random one is picked.</p>
+      </div>`;
   }
 
   // Fire draft as a plan: [{ arc, targets }].
@@ -547,8 +588,8 @@ export function mount({ container, me, sendInput }) {
         </div>
         ${h ? `<div class="sbp-hunt">${friends.map((t) => `
           <button class="sbp-target ${h.target === t.id ? 'on' : ''}" data-act="holdTarget" data-id="${t.id}">
-            <span><span class="dot" style="background:${person(t.owner).color}"></span>${escapeHtml(shipDef(t).short)}${t.id === s.id ? ' <small>(this ship)</small>' : ''}</span>
-            <span>hull ${t.hull}/${shipDef(t).hull}${(t.crits || []).length ? ` · ${(t.crits || []).length} crit` : ''} ${h.target === t.id ? '✔' : ''}</span></button>`).join('')}
+            <span><span class="dot" style="background:${person(t.owner).color}"></span>${escapeHtml(unitName(t))}${t.id === s.id ? ' <small>(this ship)</small>' : ''}</span>
+            <span>hull ${t.hull}/${maxHull(t)}${(t.crits || []).length ? ` · ${(t.crits || []).length} crit` : ''} ${h.target === t.id ? '✔' : ''}</span></button>`).join('')}
         </div>` : ''}
       </div>`;
   }
@@ -564,10 +605,11 @@ export function mount({ container, me, sendInput }) {
       ${header()}
       <div class="sbp-body">
         ${shipTabs()}
-        <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}</b> <small class="muted">each weapon picks its own target</small></div>
+        <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}${s.letter ? ` ${s.letter}` : ""}</b> <small class="muted">each weapon picks its own target</small></div>
         <div class="sbp-power"><b>⚡ Power ${used}/${power}</b><span class="sbp-power-bar">${Array.from({ length: Math.max(power, used) }, (_, i) => `<i class="${i < used ? 'on' : ''}"></i>`).join('')}</span><small>${power - used > 0 ? `${power - used} unused (wasted)` : 'all used'}</small></div>
         ${fireStanceNote(s)}
         ${repairPicker(s)}
+        ${critPicker(s)}
         ${holdPicker(s)}
         <canvas class="sbp-map"></canvas>
         ${ARCS.filter((arc) => arcWeapons(s, arc).length).map((arc) => `
@@ -576,14 +618,15 @@ export function mount({ container, me, sendInput }) {
               ${arcWeapons(s, arc).map((w, wi) => {
                 const wd = WEAPONS[w.weapon];
                 const used = weaponUsedUp(s, arc, wi);
+                const offline = weaponOffline(s, arc, wi);
                 const targets = weaponTargets(s, arc, wi, units(), state.asteroids);
                 const chosen = draft[arc]?.[wi] || null;
-                const unit = wd.effect === 'ion' ? 'shield dmg' : 'dmg';
+                const unit = wd.effect === 'ion' ? 'shield dmg' : wd.effect === 'crit' ? 'crit value' : 'dmg';
                 const tags = weaponTags(wd);
                 return `
                   <div class="sbp-weapon">
-                    <div class="sbp-weapon-head"><b>${escapeHtml(wd.name)} <small>${dmgText(wd, w.shots)} · ${reachDots(wd.reach)}${tags.length ? ` · ${tags.join(', ')}` : ''}</small></b><span class="sbp-once">${used ? 'Used up' : `⚡${weaponPower(w)}`}</span></div>
-                    ${used ? '' : targets.length ? `
+                    <div class="sbp-weapon-head"><b>${escapeHtml(wd.name)} <small>${dmgText(wd, w.shots)} · ${reachDots(wd.reach)}${tags.length ? ` · ${tags.join(', ')}` : ''}</small></b><span class="sbp-once">${used ? 'Used up' : offline ? '⊘ Offline' : `⚡${weaponPower(w)}`}</span></div>
+                    ${used ? '' : offline ? '<p class="muted sbp-small">Knocked out by a Weapons Systems critical. Repair it with Critical Repairs.</p>' : targets.length ? `
                       ${targets.map((t) => {
                         const ts = unitById(t.id);
                         const sel = chosen === t.id;
@@ -755,6 +798,28 @@ export function mount({ container, me, sendInput }) {
       ctx.fillText(SQUADRON_ROLES[squadDef(q).role].letter, X(q.x), Y(q.y) + 0.5);
     }
 
+    // 30° (spinal) weapons: show their firing wedge from where the ship will end its move, so the
+    // player can line up the shot.
+    if (path) {
+      const spinal = arcWeapons(s, 'spinal').filter((w, wi) => !weaponUsedUp(s, 'spinal', wi) && !weaponOffline(s, 'spinal', wi));
+      if (spinal.length) {
+        const end = path[path.length - 1];
+        const reach = Math.max(...spinal.map((w) => BAND_INDEX[WEAPONS[w.weapon].reach]));
+        const r = (RANGE_BANDS[reach].max + classOf(s).length / 2) * k;
+        const half = (ARC_DEFS.spinal.half * Math.PI) / 180;
+        const mid = (end.heading * Math.PI) / 180;
+        ctx.fillStyle = 'rgba(255,183,3,.12)';
+        ctx.strokeStyle = 'rgba(255,183,3,.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(X(end.x), Y(end.y));
+        ctx.arc(X(end.x), Y(end.y), r, mid - half, mid + half);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
     if (path) {
       const hz = pathHazard(s, moveDraft[s.id], state.map, state.asteroids);
       ctx.strokeStyle = hz ? 'rgba(255,107,107,.9)' : 'rgba(255,255,255,.85)';
@@ -841,19 +906,34 @@ export function mount({ container, me, sendInput }) {
   // ---------- Actions ----------
   // Puts the draft's speed and turns back inside what the current stance allows.
   function fitDraft(s, d, speed = d.speed) {
-    const opts = speedOptions(s, d.stance.id);
+    const opts = speedOptions(s, d.stance);
     if (!opts.includes(speed)) speed = opts.reduce((a, b) => (Math.abs(b - speed) < Math.abs(a - speed) ? b : a));
     const n = Math.max(1, speed);
-    const mc = maxClicks(s, speed, d.stance.id);
+    const mc = maxClicks(s, speed, d.stance);
     d.speed = speed;
-    d.clicks = Array.from({ length: n }, (_, i) => { const m = segmentClicks(s, speed, d.stance.id, i); return Math.max(-m, Math.min(m, d.clicks[i] || 0)); });
-    selSeg = Math.min(selSeg, n - 1);
+    d.clicks = Array.from({ length: n }, (_, i) => { const m = segmentClicks(s, speed, d.stance, i); return Math.max(-m, Math.min(m, d.clicks[i] || 0)); });
+    const et = endTurnClicks(s, d.stance);
+    if (et) d.endTurn = Math.max(-et, Math.min(et, d.endTurn || 0));
+    else delete d.endTurn;
+    selSeg = Math.min(selSeg, n - (et ? 0 : 1));
+  }
+
+  // Violent Turn: the turn at the end of the move.
+  function turnEnd(delta) {
+    const s = shipById(selShip);
+    const d = moveDraft[s.id];
+    const et = endTurnClicks(s, d.stance);
+    const c = (d.endTurn || 0) + delta;
+    if (!et || Math.abs(c) > et) return;
+    d.endTurn = c;
+    selSeg = d.clicks.length;
+    render();
   }
 
   function setSpeed(delta) {
     const s = shipById(selShip);
     const d = moveDraft[s.id];
-    if (!speedOptions(s, d.stance.id).includes(d.speed + delta)) return;
+    if (!speedOptions(s, d.stance).includes(d.speed + delta)) return;
     fitDraft(s, d, d.speed + delta);
     render();
   }
@@ -861,7 +941,7 @@ export function mount({ container, me, sendInput }) {
   function turn(i, delta) {
     const s = shipById(selShip);
     const d = moveDraft[s.id];
-    const mc = segmentClicks(s, d.speed, d.stance.id, i);
+    const mc = segmentClicks(s, d.speed, d.stance, i);
     const c = d.clicks[i] + delta;
     if (Math.abs(c) > mc) return;
     d.clicks[i] = c;
@@ -876,12 +956,7 @@ export function mount({ container, me, sendInput }) {
     const prev = d.stance;
     d.stance = { id };
     if (STANCES[id].needsZone) d.stance.zone = prev.zone || 'front';
-    if (STANCES[id].needsTarget) {
-      // Default mark: the nearest living enemy ship.
-      const near = state.ships.filter((t) => t.alive && t.faction !== s.faction)
-        .sort((a, b) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(b.x - s.x, b.y - s.y))[0];
-      d.stance.target = prev.target || near?.id || null;
-    }
+    if (prev.wild && canAddWild(s, id)) d.stance.wild = true;
     notice = '';
     fitDraft(s, d);
     render();
@@ -932,7 +1007,7 @@ export function mount({ container, me, sendInput }) {
         : Object.entries(fireDraft[s.id]).filter(([, m]) => Object.keys(m).length).map(([arc, targets]) => ({ arc, targets }));
     }
     const msg = { type: state.phase, round: state.round, ready: true, ships };
-    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; }
+    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; }
     sendInput(msg);
     buzz(20);
   }
@@ -960,19 +1035,20 @@ export function mount({ container, me, sendInput }) {
     else if (act === 'target') pickTarget(b.dataset.arc, Number(b.dataset.wi), b.dataset.id || null);
     else if (act === 'stance') setStance(b.dataset.s);
     else if (act === 'stanceZone') { moveDraft[selShip].stance.zone = b.dataset.z; render(); }
-    else if (act === 'stanceTarget') { moveDraft[selShip].stance.target = b.dataset.id; render(); }
-    else if (act === 'repair') {
-      const keep = repairDraft[selShip]?.crit;
-      repairDraft[selShip] = b.dataset.k === 'shields' ? { kind: 'shields', zones: [] } : { kind: b.dataset.k };
-      if (keep !== undefined) repairDraft[selShip].crit = keep;
+    else if (act === 'stanceWild') {
+      const d = moveDraft[selShip];
+      if (d.stance.wild) delete d.stance.wild; else d.stance.wild = true;
+      fitDraft(shipById(selShip), d);
       render();
     }
-    else if (act === 'repairZone') { const r = repairDraft[selShip]; if (r.zones.length < repairOf(shipById(selShip)).shields) r.zones.push(b.dataset.z); render(); }
-    else if (act === 'repairClear') { repairDraft[selShip].zones = []; render(); }
+    else if (act === 'captain') sendInput({ type: 'captain', index: Number(b.dataset.i), captain: b.dataset.c || null });
+    else if (act === 'squadCaptain') sendInput({ type: 'squadCaptain', index: Number(b.dataset.i), slot: Number(b.dataset.k), captain: b.dataset.c || null });
+    else if (act === 'critPick') { if (b.dataset.c) critDraft[selShip] = b.dataset.c; else delete critDraft[selShip]; render(); }
+    else if (act === 'endTurn') { e.stopPropagation(); turnEnd(Number(b.dataset.d)); }
     else if (act === 'mine') { const d = moveDraft[selShip]; d.mine = !d.mine; render(); }
     else if (act === 'hold') { holdDraft[selShip] = b.dataset.k ? { kind: b.dataset.k, target: holdDraft[selShip]?.target || selShip } : null; if (!holdDraft[selShip]) delete holdDraft[selShip]; render(); }
     else if (act === 'holdTarget') { if (holdDraft[selShip]) holdDraft[selShip].target = b.dataset.id; render(); }
-    else if (act === 'repairCrit') { (repairDraft[selShip] || (repairDraft[selShip] = { kind: 'crit' })).crit = Number(b.dataset.i); render(); }
+    else if (act === 'repairCrit') { repairDraft[selShip] = { crit: Number(b.dataset.i) }; render(); }
     else if (act === 'send') send();
     else if (act === 'unready') sendInput({ type: state.phase, round: state.round, ready: false });
   });
@@ -1006,14 +1082,14 @@ export function mount({ container, me, sendInput }) {
       const d = moveDraft[selShip];
       if (k === 'ArrowUp' || k === 'w') setSpeed(1);
       else if (k === 'ArrowDown' || k === 's') setSpeed(-1);
-      else if (k === 'ArrowLeft' || k === 'a') turn(selSeg, -1);
-      else if (k === 'ArrowRight' || k === 'd') turn(selSeg, 1);
+      else if (k === 'ArrowLeft' || k === 'a') { if (selSeg >= d.clicks.length) turnEnd(-1); else turn(selSeg, -1); }
+      else if (k === 'ArrowRight' || k === 'd') { if (selSeg >= d.clicks.length) turnEnd(1); else turn(selSeg, 1); }
       else if (k === 'q') { selSeg = Math.max(0, selSeg - 1); render(); }
-      else if (k === 'e') { selSeg = Math.min(d.clicks.length - 1, selSeg + 1); render(); }
+      else if (k === 'e') { selSeg = Math.min(d.clicks.length - (endTurnClicks(shipById(selShip), d.stance) ? 0 : 1), selSeg + 1); render(); }
       else if (k === 'm' && specialLeft(shipById(selShip), 'mineDrop') > 0) { d.mine = !d.mine; render(); }
-      else if (k === 'l' && hasWing(shipById(selShip)) && !critCount(shipById(selShip), 'comms')) {
-        // Launch every docked squadron on Escort.
-        for (const q of wingSquads(selShip)) if (q.alive && q.docked) (d.squads || (d.squads = {}))[q.id] = { order: 'escort' };
+      else if (k === 'l' && hasWing(shipById(selShip))) {
+        // Launch every docked squadron on Intercept.
+        for (const q of wingSquads(selShip)) if (q.alive && q.docked) (d.squads || (d.squads = {}))[q.id] = { order: 'intercept' };
         render();
       }
       else if (k === 'z') cycleStance(-1);

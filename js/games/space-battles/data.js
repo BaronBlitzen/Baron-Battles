@@ -1,8 +1,9 @@
 // Space Battles – game data. Plain data only: factions, weapons, ship classes,
 // ships and scenarios. To add a ship or a weapon, add an entry here; the logic
 // in rules.js / host.js / controller.js reads everything from these tables.
-// Numbers come from docs/space-battles-weapons-v2.md (weapons, ships) and
-// docs/space-battles-rules.md (everything else).
+// Protectorate and Djnzuar ships, weapons, squadrons, stances and criticals come from
+// docs/space-battles-ships-v3.md; Pirates and everything else from
+// docs/space-battles-weapons-v2.md and docs/space-battles-rules.md.
 
 export const FACTIONS = {
   protectorate: {
@@ -13,12 +14,11 @@ export const FACTIONS = {
     // Each player on the team gets the next shade, so teammates can be told apart.
     shades: ['#4dabf7', '#a5d8ff', '#1971c2', '#74c0fc', '#d0ebff', '#1864ab', '#339af0', '#e7f5ff'],
     available: true,
-    blurb: 'Strike carriers, long-range guns, fast escorts',
+    blurb: 'Strike carriers, long-range lasers, torpedo boats',
     edge: 'west', // deployment edge (null = whichever edge is free)
-    // Trained helms: +1 extra turn click when using Maneuvering Thrusters or Full Burn.
-    // Hangar repair: at the end of the round, squadrons docked in their living carrier
-    // restore `hangarRepair` hull (not above max).
-    traits: { ram: null, home: null, trainedHelms: 1, repair: null, hangarRepair: 1 },
+    // Hangar repair: at the end of the round, squadrons docked in their living carrier get their
+    // craft's shields back (lost craft don't come back).
+    traits: { ram: null, home: null, hangarRepair: true },
   },
   djnzuar: {
     id: 'djnzuar',
@@ -27,12 +27,11 @@ export const FACTIONS = {
     color: '#ff922b', // orange
     shades: ['#ff922b', '#ffd8a8', '#d9480f', '#ffc078', '#fff4e6', '#e8590c', '#ffa94d', '#c2410c'],
     available: true,
-    blurb: 'Big, tough, brutal up close. They ram.',
+    blurb: 'Fast, brutal up close, swarms of fighters. They ram.',
     edge: 'east',
     // Ramming: when this faction's ship collides with an enemy ship, the enemy takes
     // `enemyDamage` (or the ship's own `ramDamage`) and the rammer takes `selfDamage`.
-    // Samurai engineers: Damage Control restores 3 shields or 1 hull, and also removes 1 critical.
-    traits: { ram: { enemyDamage: 3, selfDamage: 1 }, home: null, trainedHelms: 0, repair: { shields: 3, hull: 1, alsoRemoveCrit: true } },
+    traits: { ram: { enemyDamage: 3, selfDamage: 1 }, home: null },
   },
   pirates: {
     id: 'pirates',
@@ -44,18 +43,19 @@ export const FACTIONS = {
     blurb: 'Tough, fast, tricky. Turrets fire in any direction.',
     edge: null,
     // Every ship is home: the first time a ship drops to half hull or less, next round
-    // it may move as if using Full Burn (change speed by up to 2, go up to 1 over max).
-    traits: { ram: null, home: { speedChange: 2, overMax: 1 }, trainedHelms: 0, repair: null },
+    // it may change speed by up to 2 and go up to 1 over max.
+    traits: { ram: null, home: { speedChange: 2, overMax: 1 } },
   },
 };
 export const FACTION_ORDER = ['protectorate', 'djnzuar', 'pirates'];
 
-// To hit (weapons v2): every shot rolls a d10 and hits on `base`+, plus the target's agility.
-// A roll of `critOn` (10) always hits and is a critical: double damage while the zone still
-// has shields, otherwise a critical effect.
-export const HIT = { die: 10, base: 4, critOn: 10 };
+// To hit: every shot rolls a d10 and hits on `base`+, plus the target's agility, minus the
+// shooter's accuracy bonuses. A roll of `critOn` (10) always hits and is a critical: double
+// damage while the zone still has shields, otherwise a critical hit on one of the ship's systems.
+// `targetedCritOn` = the crit roll with the Targeted Attack stance.
+export const HIT = { die: 10, base: 4, critOn: 10, targetedCritOn: 9 };
 
-// Firing arcs (weapons v2). The ship points up in the pictures; angles are from the nose.
+// Firing arcs. The ship points up in the pictures; angles are from the nose.
 //   spinal  – narrow, straight ahead (±15°)
 //   battery – everything except the rear 90° (±135°)
 //   turret  – any direction
@@ -66,52 +66,52 @@ export const ARC_DEFS = {
   turret: { name: 'Turret', half: 180, desc: '360°, any direction' },
 };
 
-// Weapons. One entry = one line on the ship card, e.g. "Railgun Battery · Battery · ⚡2 · Long · 1×2".
+// Weapons. One entry = one line on the ship card.
 //   arc     – 'spinal' | 'battery' | 'turret'
-//   reach   – farthest range band it can hit ('close' | 'medium' | 'long')
+//   reach   – farthest range band it can hit ('close' | 'medium' | 'long' | 'veryLong')
 //   power   – power it costs to fire (point-defense is free)
 //   damage, shots – "damage × shots"
 //   desc    – short description shown on phones
 // Optional:
 //   once: true       – once per game; the player chooses Hold / Fire, then it's used up
-//   critOn           – crits on this roll or higher (Breaching: 9)
+//   critOn           – crits on this roll or higher (Torpedo, Breaching: 9)
+//   ignoreShields    – damage goes straight to hull (Torpedo)
 //   effect           – what a hit does besides damage:
 //     'ion'      each hit only removes shields (2, or 4 on a critical), never hull
 //     'acid'     each hit: 1 extra hull damage at the end of the NEXT round (ignores shields, stacks)
 //     'grapple'  pulls the target up to `pull` u toward the attacker; it can't speed up next round
 //     'disrupt'  target gets −1 turn click per segment next round (doesn't stack)
 //     'board'    target automatically takes 1 critical
+//     'crit'     no damage; each hit causes 1 critical hit (Djnzuar Disruptor)
 //   noSquadrons      – can't target squadrons
 //   pd               – point-defense: free, fires on its own at the nearest enemy squadron in close
 //                      range and ignores squadron agility; never aimed by the player. Its number
 //                      of shots is set per ship.
 export const WEAPONS = {
   // ----- Protectorate -----
-  railBattery: { name: 'Railgun Battery', arc: 'battery', reach: 'long', power: 2, damage: 1, shots: 2,
-    desc: 'Long-range workhorse.' },
-  heavyRail: { name: 'Heavy Railgun Battery', arc: 'battery', reach: 'long', power: 3, damage: 1, shots: 3,
-    desc: 'More railguns, more power.' },
-  ion: { name: 'Ion Cannon', arc: 'battery', reach: 'medium', power: 1, damage: 2, shots: 2, effect: 'ion', noSquadrons: true,
-    desc: 'Each hit strips 2 shields but can\'t hurt hull. Opens a zone for the guns behind it.' },
-  torpedo: { name: 'Torpedo Tubes', arc: 'spinal', reach: 'medium', power: 2, damage: 2, shots: 2,
-    desc: 'Heavy torpedoes, fired straight ahead.' },
-  lance: { name: 'Particle Lance', arc: 'spinal', reach: 'long', power: 4, damage: 3, shots: 2,
-    desc: 'A huge long-range beam. Point the whole ship at the target.' },
+  torpedo: { name: 'Torpedo', arc: 'spinal', reach: 'long', power: 2, damage: 6, shots: 1, once: true, ignoreShields: true, critOn: 9, noSquadrons: true,
+    desc: 'Once per battle. Ignores shields and crits on a 9 or 10.' },
+  smallLaser: { name: 'Small Laser Battery', arc: 'battery', reach: 'medium', power: 1, damage: 1, shots: 1,
+    desc: 'Light, cheap and reliable.' },
+  largeLaser: { name: 'Large Laser Battery', arc: 'battery', reach: 'long', power: 2, damage: 3, shots: 1,
+    desc: 'Heavy long-range laser.' },
+  ion: { name: 'Ion Cannon', arc: 'battery', reach: 'medium', power: 1, damage: 2, shots: 1, effect: 'ion', noSquadrons: true,
+    desc: 'Strips 2 shields but can\'t hurt hull. Opens a zone for the guns behind it.' },
+  lance: { name: 'Particle Lance', arc: 'spinal', reach: 'veryLong', power: 4, damage: 6, shots: 1,
+    desc: 'A huge beam with the longest reach in the game. Point the whole ship at the target.' },
   flak: { name: 'Flak', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
     desc: 'Point-defense against squadrons.' },
   // ----- Djnzuar -----
-  plasma: { name: 'Plasma Battery', arc: 'battery', reach: 'close', power: 2, damage: 1, shots: 3,
-    desc: 'Brawler guns. Deadly up close.' },
-  heavyPlasma: { name: 'Heavy Plasma Battery', arc: 'battery', reach: 'close', power: 3, damage: 1, shots: 4,
-    desc: 'A wall of plasma at close range.' },
-  maw: { name: 'Plasma Maw', arc: 'spinal', reach: 'medium', power: 3, damage: 2, shots: 3,
-    desc: 'Huge front-mounted plasma jaws.' },
-  spine: { name: 'Spine Driver', arc: 'battery', reach: 'long', power: 1, damage: 1, shots: 1,
-    desc: 'Their only long-range weapon.' },
+  maw: { name: 'Plasma Maw', arc: 'battery', reach: 'close', power: 2, damage: 3, shots: 1,
+    desc: 'Huge plasma jaws. Deadly up close.' },
+  smallRail: { name: 'Small Railgun Battery', arc: 'battery', reach: 'medium', power: 1, damage: 1, shots: 1,
+    desc: 'Light railguns.' },
+  largeRail: { name: 'Large Railgun Battery', arc: 'battery', reach: 'medium', power: 2, damage: 3, shots: 1,
+    desc: 'Heavy railguns.' },
+  critDisruptor: { name: 'Disruptor', arc: 'turret', reach: 'close', power: 2, damage: 0, shots: 1, effect: 'crit', noSquadrons: true,
+    desc: 'Fires in any direction. A hit does no damage but causes a critical hit.' },
   acid: { name: 'Acid Spitter', arc: 'battery', reach: 'close', power: 1, damage: 1, shots: 1, effect: 'acid',
-    desc: 'Each hit burns 1 more hull at the end of the next round, ignoring shields.' },
-  grapple: { name: 'Grapple Harpoon', arc: 'battery', reach: 'medium', power: 1, damage: 1, shots: 1, effect: 'grapple', pull: 1,
-    desc: 'A hit pulls the target 1 u toward you, and it can\'t speed up next round. Sets up rams.' },
+    desc: 'A hit burns 1 more hull at the end of the next round, ignoring shields.' },
   thorn: { name: 'Thorn Burst', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
     desc: 'Point-defense against squadrons.' },
   // ----- Pirates -----
@@ -132,6 +132,7 @@ export const RANGE_BANDS = [
   { id: 'close', name: 'Close', max: 4 },
   { id: 'medium', name: 'Medium', max: 8 },
   { id: 'long', name: 'Long', max: 12 },
+  { id: 'veryLong', name: 'Very Long', max: 16 },
 ];
 
 // length = along the ship's heading, width = side to side. value = fleet value / kill points.
@@ -161,71 +162,72 @@ export const MINES = { triggerDist: 1, damage: 3, dropBehind: 1.3 };
 
 const pd = (weapon, shots) => ({ weapon, shots });
 
-// Ship types (weapons v2). `weapons` lists the ship's weapons in card order; `power` is how much
-// power it has to fire them each round. `speed` is [min, max]; `clicks` is the max turn clicks per
-// segment (1 click = 15°): `clicksAtSpeed` gives the clicks at each speed (slower = tighter turns) and
-// `clicks` is used at any other speed (e.g. above max after a Full Burn). Optional: `pd` (point-defense),
-// `squadrons` (carrier slots) and `carries` (squadron types it may hold), `special` (SPECIALS),
-// `ramDamage`. `ratings` = the designer's 1–5 Offense / Defense / Mobility / Utility.
+// Ship types. `weapons` lists the ship's weapons in card order; `power` is how much power it has
+// to fire them each round. `speed` is [min, max]; `clicks` is the max turn clicks per segment
+// (1 click = 15°): `clicksAtSpeed` gives the clicks at each speed (slower = tighter turns) and
+// `clicks` is used at any other speed. Shields are front / left / right / rear (rear 1 lower).
+// Optional: `pd` (point-defense), `squadrons` (carrier slots) and `carries` (squadron types it may
+// hold), `special` (SPECIALS), `ramDamage`. `ratings` = the designer's 1–5 Offense / Defense /
+// Mobility / Utility.
 export const SHIPS = {
   // ----- Human Protectorate -----
   strikeCarrier: {
     name: 'Strike Carrier', short: 'Carrier', faction: 'protectorate', class: 'cruiser', cost: 22,
-    ratings: { o: 4, d: 4, m: 3, u: 5 },
-    desc: 'The fleet\'s centerpiece. Launches 3 squadrons and backs them up with long-range railguns.',
-    hull: 8, shields: { front: 3, left: 3, right: 3, rear: 2 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 4,
-    weapons: ['heavyRail', 'railBattery', 'ion'], pd: [pd('flak', 2)], squadrons: 3,
+    ratings: { o: 4, d: 3, m: 3, u: 5 },
+    desc: 'The fleet\'s centerpiece. Launches 3 squadrons and backs them up with long-range lasers.',
+    hull: 10, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
+    weapons: ['largeLaser', 'largeLaser', 'smallLaser', 'smallLaser', 'ion'], pd: [pd('flak', 2)], squadrons: 3,
   },
   lancer: {
-    name: 'Lancer', short: 'Lancer', faction: 'protectorate', class: 'cruiser', cost: 17,
+    name: 'Lancer', short: 'Lancer', faction: 'protectorate', class: 'cruiser', cost: 18,
     ratings: { o: 5, d: 3, m: 3 },
-    desc: 'The hardest hitter in the fleet. Its spinal Particle Lance fires straight ahead at long range.',
-    hull: 8, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
-    weapons: ['lance', 'heavyRail', 'railBattery'], pd: [pd('flak', 1)],
+    desc: 'The hardest hitter in the fleet. Its spinal Particle Lance outranges everything.',
+    hull: 10, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
+    weapons: ['lance', 'largeLaser', 'largeLaser', 'smallLaser', 'smallLaser'], pd: [pd('flak', 1)],
   },
   escort: {
-    name: 'Escort', short: 'Escort', faction: 'protectorate', class: 'destroyer', cost: 11,
-    ratings: { o: 2, d: 3, m: 4 },
-    desc: 'A quick all-rounder with the heaviest flak in the fleet.',
-    hull: 7, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [2, 4], clicks: 1, clicksAtSpeed: { 2: 3, 3: 2 }, power: 3,
-    weapons: ['railBattery', 'railBattery', 'ion'], pd: [pd('flak', 3)],
+    name: 'Escort', short: 'Escort', faction: 'protectorate', class: 'destroyer', cost: 12,
+    ratings: { o: 2, d: 3, m: 3 },
+    desc: 'A sturdy all-rounder with the heaviest flak in the fleet.',
+    hull: 8, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 3,
+    weapons: ['ion', 'smallLaser', 'smallLaser', 'smallLaser'], pd: [pd('flak', 3)],
   },
   torpedoBoat: {
-    name: 'Torpedo Boat', short: 'Torpedo Boat', faction: 'protectorate', class: 'corvette', cost: 9,
+    name: 'Torpedo Boat', short: 'Torpedo Boat', faction: 'protectorate', class: 'corvette', cost: 8,
     ratings: { o: 3, d: 1, m: 5 },
-    desc: 'Very fast and very fragile. Lines up its torpedo tubes for hit-and-run strikes.',
-    hull: 4, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3, 4: 3 }, power: 2,
-    weapons: ['torpedo', 'railBattery'],
+    desc: 'Nimble and fragile. Lines up its one torpedo for a devastating strike.',
+    hull: 5, shields: { front: 2, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3, 4: 3 }, power: 2,
+    weapons: ['torpedo', 'smallLaser', 'smallLaser'],
   },
 
   // ----- Djnzuar -----
   queen: {
     name: 'Queen', short: 'Queen', faction: 'djnzuar', class: 'battleship', cost: 22,
-    ratings: { o: 1, d: 5, m: 1, u: 5 },
-    desc: 'A huge, slow mother ship. Barely armed, but its brood of 4 squadrons does the fighting.',
-    hull: 12, shields: { front: 4, left: 3, right: 3, rear: 2 }, speed: [1, 2], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
-    weapons: ['spine', 'spine', 'acid'], pd: [pd('thorn', 3)], squadrons: 4, carries: ['swarmers', 'latchers'],
+    ratings: { o: 2, d: 5, m: 2, u: 5 },
+    desc: 'A huge mother ship that turns surprisingly well. Its brood of 4 Swarmer squadrons does the fighting.',
+    hull: 14, shields: { front: 3, left: 3, right: 3, rear: 2 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 4,
+    weapons: ['largeRail', 'smallRail', 'smallRail', 'smallRail', 'smallRail'], pd: [pd('thorn', 3)], squadrons: 4, carries: ['swarmers'],
   },
   brute: {
-    name: 'Brute', short: 'Brute', faction: 'djnzuar', class: 'cruiser', cost: 16,
-    ratings: { o: 4, d: 4, m: 2 },
-    desc: 'A slow, armored bruiser. Harpoons enemies close, then unloads its plasma.',
-    hull: 10, shields: { front: 3, left: 2, right: 2, rear: 1 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 5,
-    weapons: ['heavyPlasma', 'plasma', 'grapple', 'spine'], pd: [pd('thorn', 1)],
+    name: 'Brute', short: 'Brute', faction: 'djnzuar', class: 'cruiser', cost: 18,
+    ratings: { o: 5, d: 4, m: 3 },
+    desc: 'An armored bruiser. Gets close and unloads three heavy railguns and acid.',
+    hull: 11, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
+    weapons: ['largeRail', 'largeRail', 'largeRail', 'acid', 'acid', 'smallRail', 'smallRail'], pd: [pd('thorn', 2)],
   },
   samurai: {
     name: 'Samurai', short: 'Samurai', faction: 'djnzuar', class: 'destroyer', cost: 12,
-    ratings: { o: 4, d: 2, m: 4 },
-    desc: 'A fast, aggressive raider with cruiser-sized plasma guns and thin shields.',
-    hull: 7, shields: { front: 2, left: 1, right: 1, rear: 0 }, speed: [2, 4], clicks: 1, clicksAtSpeed: { 2: 3, 3: 2 }, power: 4,
-    weapons: ['heavyPlasma', 'plasma', 'acid'],
+    ratings: { o: 4, d: 2, m: 5 },
+    desc: 'A fast, agile raider. Its Disruptor cripples ships up close.',
+    hull: 7, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3 }, power: 3,
+    weapons: ['critDisruptor', 'largeRail', 'smallRail', 'smallRail'],
   },
   grunt: {
-    name: 'Grunt', short: 'Grunt', faction: 'djnzuar', class: 'corvette', cost: 6,
-    ratings: { o: 2, d: 2, m: 2 },
-    desc: 'Cheap and expendable. Field a swarm of them.',
-    hull: 3, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 2 }, power: 2,
-    weapons: ['plasma', 'spine'],
+    name: 'Grunt', short: 'Grunt', faction: 'djnzuar', class: 'corvette', cost: 7,
+    ratings: { o: 3, d: 2, m: 3 },
+    desc: 'Fast and cheap. Can wrench itself around with a Violent Turn.',
+    hull: 5, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 1, clicksAtSpeed: { 2: 2 }, power: 2,
+    weapons: ['maw', 'smallRail', 'smallRail'],
   },
 
   // ----- Pirates -----
@@ -275,6 +277,7 @@ export const MOVE = {
   asteroidDamage: 2,
   edgeDamage: 2,
   recoverClicks: 6, // emergency thrusters: extra clicks in the first segment after hitting the edge or an asteroid
+  endTurnShare: 0.15, // Violent Turn: share of the Move's time spent on the turn at the end
 };
 
 export const TIMING = {
@@ -331,102 +334,124 @@ export const SCENARIOS = {
   },
 };
 
-// Stances (rules §5, reworded for Power in weapons v2). Picked secretly in Plan Movement,
-// revealed when the Move starts, and kept for the whole round. A ship can't pick the same stance
-// two rounds in a row (Balanced is the exception). The numbers below are read by rules.js.
+// Stances (ships v3). Picked secretly in Plan Movement, revealed when the Move starts, and kept
+// for the whole round. Any stance may be picked again every round. The numbers below are read by rules.js.
+//   carrierOnly – only carriers; ships – only these ship types; captain – only ships with this captain
+//   accuracy    – + = this ship's weapons need that much lower to hit
+//   squadAccuracy – this carrier's squadrons get + accuracy this round
+//   critOn      – this ship's weapons crit on this roll or higher
+//   doubleWeapons – these weapon ids ('all' = every weapon) fire twice this round, no extra Power
+//                   (once-per-game weapons never fire twice)
 export const STANCES = {
-  balanced: { name: 'Balanced', icon: '◆', desc: 'No bonus, no penalty.' },
-  brace: { name: 'Brace', icon: '🛡', desc: 'All damage taken is halved (rounded up). −1 Power; max 1 turn click.',
-    halveDamage: true, powerChange: -1, maxClicks: 1 },
-  shieldCharge: { name: 'Shield Charge', icon: '⚡', desc: 'Pick a zone: +2 shields there this round. The opposite zone\'s shields count as 0.',
-    chargeShields: 2, needsZone: true },
-  evasive: { name: 'Maneuvering Thrusters', icon: '💨', desc: '+1 turn click and +1 agility (harder to hit). −1 Power.',
-    extraClicks: 1, agility: 1, powerChange: -1, helms: true },
-  fullBurn: { name: 'Full Burn', icon: '🔥', desc: 'Change speed by up to 2, up to 1 over max. Can\'t fire; rear shields count as 0.',
-    speedChange: 2, overMax: 1, noFire: true, rearShieldsOff: true, helms: true },
-  overcharge: { name: 'Overcharge', icon: '💥', desc: '+2 Power. Attacks against you deal +1 damage. Can\'t change speed.',
-    powerChange: 2, damageTakenBonus: 1, holdSpeed: true },
-  hunter: { name: 'Hunter', icon: '🎯', desc: 'Mark an enemy ship: you hit it on one lower, and its Maneuvering Thrusters don\'t help against you. You may only attack it.',
-    needsTarget: true, huntHit: 1 },
-  damageControl: { name: 'Damage Control', icon: '🔧', desc: 'End of round: restore 2 shields or 1 hull, or remove 1 critical. Must slow down by 1; −1 Power.',
-    powerChange: -1, mustSlow: true, repair: { shields: 2, hull: 1, alsoRemoveCrit: false } },
+  balanced: { name: 'No stance', icon: '◆', desc: 'No bonus, no penalty.' },
+  wild: { name: 'Wild Maneuvers', icon: '💨', desc: '+1 turn click per segment and +1 agility (harder to hit). Change speed by up to 2. All your weapons −1 accuracy.',
+    extraClicks: 1, agility: 1, speedChange: 2, accuracy: -1 },
+  repairs: { name: 'Critical Repairs', icon: '🔧', desc: 'End of round: repair 1 critical hit (you pick which in Plan Fire).',
+    repairCrit: true },
+  shieldBoost: { name: 'Shield Boost', icon: '⚡', desc: 'Pick a side: +2 shields there. It can go up to 2 over max; anything over max is lost at the end of next round.',
+    boostShields: 2, needsZone: true },
+  targeted: { name: 'Targeted Attack', icon: '🎯', desc: 'All your weapons +1 accuracy, and they crit on a 9 or 10.',
+    accuracy: 1, critOn: 9 },
+  command: { name: 'Command', icon: '📡', desc: 'Carriers only. Your squadrons get +1 accuracy this round.',
+    carrierOnly: true, squadAccuracy: 1 },
+  violentTurn: { name: 'Violent Turn', icon: '🌀', desc: 'Grunts only. Take 1 hull damage. At the end of your move, turn up to 90° more.',
+    ships: ['grunt'], selfDamage: 1, endTurnClicks: 6 },
+  exterminate: { name: 'Exterminate', icon: '☠', desc: 'Shrike Leonitas only. Your Particle Lance fires twice this round (no extra Power).',
+    captain: 'shrike', doubleWeapons: ['lance'] },
+  reckless: { name: 'Reckless Attack', icon: '💥', desc: 'Golbrik only. Take 1 hull damage. All your weapons fire twice this round (no extra Power).',
+    captain: 'golbrik', selfDamage: 1, doubleWeapons: 'all' },
 };
-export const STANCE_ORDER = ['balanced', 'brace', 'shieldCharge', 'evasive', 'fullBurn', 'overcharge', 'hunter', 'damageControl'];
+export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targeted', 'command', 'violentTurn', 'exterminate', 'reckless'];
 
-// Stances each class may use (Balanced is always allowed).
-export const CLASS_STANCES = {
-  corvette: ['evasive', 'fullBurn', 'hunter', 'overcharge', 'damageControl'],
-  destroyer: ['evasive', 'fullBurn', 'hunter', 'shieldCharge', 'damageControl'],
-  cruiser: ['brace', 'shieldCharge', 'evasive', 'overcharge', 'damageControl'],
-  battleship: ['brace', 'shieldCharge', 'overcharge', 'damageControl', 'hunter'],
+// Captains: an upgrade bought for one ship (or one squadron) in fleet building, at most one each.
+// The same captain may be on several ships. A captain is lost with its ship.
+//   ships     – ship types that may take this captain (null = any ship of `factions`)
+//   squadrons – squadron types that may take this captain (instead of ships)
+// Effects (read by rules.js / host.js):
+//   freeWild      – may add Wild Maneuvers on top of another stance every round
+//   shieldRegen   – shields regained at the end of every round (front first, then the emptier side, then rear)
+//   stance        – unlocks this stance (STANCES[..].captain)
+//   alwaysCommand – this carrier's squadrons always get Command's +1 accuracy (Command isn't offered)
+//   accuracy      – squadron: + accuracy; ignoreFirstHit – squadron ignores the first hit each round
+//   pickCrit      – the player picks which system this ship's criticals damage (in Plan Fire)
+//   hull / speed / clicks – + max hull, + max speed, + turn clicks per segment
+export const CAPTAINS = {
+  shuna: { name: 'Shuna, Dolphin Warrior', short: 'Shuna', icon: '🐬', cost: 2, ships: ['torpedoBoat'], freeWild: true,
+    desc: 'Every round you may use Wild Maneuvers AND another stance.' },
+  verity: { name: 'Samuel Verity', short: 'Verity', icon: '🛡', cost: 3, ships: null, factions: ['protectorate', 'djnzuar'], shieldRegen: 1,
+    desc: 'End of every round: regain 1 shield (front first; if it\'s full, the emptier side; if both sides are full, the rear). Not while the Shield Generator is damaged.' },
+  shrike: { name: 'Shrike Leonitas', short: 'Shrike', icon: '☠', cost: 3, ships: ['lancer'], stance: 'exterminate',
+    desc: 'Unlocks the Exterminate stance: your Particle Lance fires twice that round (no extra Power).' },
+  amelia: { name: 'Amelia Dangerfield', short: 'Amelia', icon: '📡', cost: 3, ships: ['strikeCarrier'], alwaysCommand: true,
+    desc: 'Born Commander: your squadrons always get +1 accuracy (as if you used Command), so you\'re free to pick another stance.' },
+  flaggs: { name: 'Iceman Flaggs', short: 'Iceman', icon: '🧊', cost: 2, squadrons: ['fighters'], accuracy: 1, ignoreFirstHit: true,
+    desc: 'This Fighter squadron gets +1 accuracy, and the first hit on it each round is ignored.' },
+  golbrik: { name: 'Golbrik', short: 'Golbrik', icon: '💥', cost: 2, ships: ['grunt'], stance: 'reckless',
+    desc: 'Unlocks the Reckless Attack stance: take 1 hull damage, and all your weapons fire twice that round (no extra Power).' },
+  seirSeir: { name: 'Seir-Seir', short: 'Seir-Seir', icon: '🗡', cost: 2, ships: ['samurai'], pickCrit: true,
+    desc: 'When this ship causes a critical hit, you choose which system it damages (pick it in Plan Fire).' },
+  tulbrik: { name: 'King Tulbrik', short: 'Tulbrik', icon: '👑', cost: 2, ships: ['brute'], hull: 2,
+    desc: '+2 hull.' },
+  uen: { name: 'Queen Uen', short: 'Uen', icon: '👸', cost: 3, ships: ['queen'], speed: 1, clicks: 1,
+    desc: '+1 max speed and +1 turn click per segment.' },
 };
+export const CAPTAIN_ORDER = Object.keys(CAPTAINS);
 
-// Criticals (rules §7, weapons v2). A critical roll (10) on a zone with no shields left gives the
-// ship a random critical from CRIT_POOL. Criticals stack and stay until Damage Control removes
-// them (none wear off on their own).
-// `nextRound`: takes effect from the next round on (Weapons Offline, Bridge Fire, Comms Down).
+// Criticals (ships v3). A critical roll on a zone with no shields left damages one of the ship's
+// 6 systems, picked at random (a system that's already damaged is rerolled). It stays damaged
+// until Critical Repairs fixes it. `nextRound`: starts acting from the next round (Hull fire).
 export const CRITICALS = {
-  engines: { name: 'Damaged Engines', icon: '⚙', desc: 'Max speed −1.' },
-  thrusters: { name: 'Jammed Thrusters', icon: '↺', desc: '−1 turn click per segment.' },
-  weaponsOffline: { name: 'Weapons Offline', icon: '⊘', desc: '−2 Power (from next round) until repaired.', nextRound: true, power: 2 },
-  shieldGen: { name: 'Shield Generator Hit', icon: '✖', desc: 'One zone\'s shields can\'t be restored.' },
-  bridgeFire: { name: 'Bridge Fire', icon: '🔥', desc: '1 hull damage at the end of each round (from next round), ignoring shields.', nextRound: true, burn: 1 },
-  comms: { name: 'Comms Down', icon: '📡', desc: 'This ship\'s squadrons ignore new orders (from next round) until repaired.', nextRound: true },
+  hull: { name: 'Hull Fire', icon: '🔥', desc: '1 damage at the end of every round, ignoring shields.', nextRound: true, burn: 1 },
+  weapons: { name: 'Weapons Systems', icon: '⊘', desc: 'One weapon can\'t fire.' },
+  thrusters: { name: 'Maneuvering Thrusters', icon: '↺', desc: 'Can\'t turn: the ship must fly straight.' },
+  shieldGen: { name: 'Shield Generator', icon: '✖', desc: 'No shields (they come back when repaired).' },
+  engines: { name: 'Main Engines', icon: '⚙', desc: 'Can\'t change speed.' },
+  bridge: { name: 'Bridge', icon: '🧭', desc: 'The only stance you can pick is Critical Repairs.' },
 };
-// Criticals that can be rolled. Comms Down is only rolled on a carrier that still has living
-// squadrons (other ships pick from the rest).
-export const CRIT_POOL = ['engines', 'thrusters', 'weaponsOffline', 'shieldGen', 'bridgeFire', 'comms'];
+export const CRIT_POOL = ['hull', 'weapons', 'thrusters', 'shieldGen', 'engines', 'bridge'];
 
-// Squadrons (rules §8). Small automatic units: hull but no shields or zones, close range only.
-// Bought in fleet building to fill a carrier (`SHIPS[type].squadrons` slots). `role`:
-//   fighter  – shoots the nearest enemy squadron in close range, else the nearest enemy ship
-//   bomber   – shoots the nearest enemy ship in close range, else the nearest enemy squadron
-//   boarding – never shoots and only goes after ships; `latch`: ending its move touching an enemy
-//              ship gives that ship 1 critical at the end of the round, then it's removed
-// `vsSquadron` / `vsShip` = { shots, damage } (d10 roll like ship weapons). `crit`: its 10s against
-// ships are criticals (bombers only).
+// Squadrons (ships v3). A squadron is a group of `craft`, drawn as one small circle each. Each
+// craft has 1 hull and `shield` (0 or 1) shield: a hit first knocks off a craft's shield, the next
+// one destroys it. Every living craft fires one shot per round (close range) for `damage`.
+// Bought in fleet building to fill a carrier (`SHIPS[type].squadrons` slots). `role` decides
+// what it shoots when it has no order to follow:
+//   fighter  – the nearest enemy squadron in close range, else the nearest enemy ship
+//   bomber   – the nearest enemy ship in close range, else the nearest enemy squadron
+// Optional: `accuracy` (−1 = needs 1 higher), `ignoreShields`, `crit` (its 10s against ships crit).
 export const SQUADRONS = {
-  hawk: { name: 'Hawk', short: 'Hawk', faction: 'protectorate', role: 'fighter', cost: 2, hull: 3, speed: 7,
-    vsSquadron: { shots: 2, damage: 1 }, vsShip: { shots: 1, damage: 1 }, crit: false,
-    desc: 'Fighter. Hunts enemy squadrons first.' },
-  talon: { name: 'Talon', short: 'Talon', faction: 'protectorate', role: 'bomber', cost: 2, hull: 3, speed: 4,
-    vsSquadron: { shots: 1, damage: 1 }, vsShip: { shots: 2, damage: 1 }, crit: true,
-    desc: 'Bomber. Goes after ships first.' },
-  swarmers: { name: 'Swarmers', short: 'Swarmers', faction: 'djnzuar', role: 'fighter', cost: 2, hull: 2, speed: 6,
-    vsSquadron: { shots: 2, damage: 1 }, vsShip: { shots: 1, damage: 1 }, crit: false,
-    desc: 'Fighter. Very cheap. Hunts enemy squadrons first.' },
-  gorers: { name: 'Gorers', short: 'Gorers', faction: 'djnzuar', role: 'bomber', cost: 4, hull: 4, speed: 3,
-    vsSquadron: { shots: 1, damage: 1 }, vsShip: { shots: 2, damage: 1 }, crit: true,
-    desc: 'Bomber. Tough; goes after ships first.' },
-  latchers: { name: 'Latchers', short: 'Latchers', faction: 'djnzuar', role: 'boarding', cost: 2, hull: 1, speed: 4,
-    latch: true, crit: false,
-    desc: 'Doesn\'t shoot and only attacks ships. If it ends its move touching an enemy ship, that ship gets 1 critical at the end of the round (then the Latchers are gone).' },
+  fighters: { name: 'Fighters', short: 'Fighters', faction: 'protectorate', role: 'fighter', cost: 3, craft: 4, shield: 1, speed: 16,
+    weapon: 'Laser Cannon', damage: 1, crit: false,
+    desc: 'Fast fighters. Hunt enemy squadrons first.' },
+  bombers: { name: 'Bombers', short: 'Bombers', faction: 'protectorate', role: 'bomber', cost: 4, craft: 3, shield: 1, speed: 12,
+    weapon: 'Nuclear Bomb', damage: 2, ignoreShields: true, crit: true,
+    desc: 'Nuclear bombs ignore shields. Go after ships first.' },
+  swarmers: { name: 'Swarmers', short: 'Swarmers', faction: 'djnzuar', role: 'fighter', cost: 3, craft: 6, shield: 0, speed: 16,
+    weapon: 'Bite Cannon', damage: 1, accuracy: -1, crit: false,
+    desc: 'A big, fast swarm with no shields. Hunts enemy squadrons first.' },
 };
 export const SQUADRON_ROLES = {
   fighter: { name: 'Fighter', letter: 'F' },
   bomber: { name: 'Bomber', letter: 'B' },
-  boarding: { name: 'Boarding', letter: 'L' },
 };
 
-// Squadron numbers. `size` = circle diameter (u). `agility` = added to the number needed to hit
-// a squadron (point-defense ignores it).
+// Squadron numbers. `size` = diameter of the squadron's group (u). `agility` = added to the number
+// needed to hit a squadron (point-defense ignores it).
 export const SQUADRON = {
-  size: 0.4,
+  size: 0.7,
   value: 1, // kill points / fleet value
   agility: 2,
-  escortGap: 0.6, // Escort: each squadron flies to its own spot this far from the carrier's hull
-  latchDist: 0.25, // Latchers / Return docking: "touching" = within this distance of the outline
+  escortGap: 0.7, // with nothing to attack, a squadron waits this far from its carrier's hull
+  latchDist: 0.25, // Return docking: "touching" = within this distance of the outline
 };
 
-// Squadron orders (rules §8): each squadron gets its own, in Plan Movement. Squadrons start docked
-// inside their carrier; giving a docked squadron a `launches` order launches it. Orders are kept
-// when the player times out (or the carrier has Comms Down).
+// Squadron orders: each squadron gets its own, in Plan Movement. Squadrons start docked inside
+// their carrier; giving a docked squadron a `launches` order launches it. Orders are kept when the
+// player times out. With nothing to go after, a launched squadron waits next to its carrier.
 //   dockedOnly – only for docked squadrons; launchedOnly – only for launched ones.
 export const SQUAD_ORDERS = {
   docked: { name: 'Stay docked', icon: '🏠', desc: 'Stays safe inside the carrier (can\'t shoot or be shot).', dockedOnly: true },
-  escort: { name: 'Escort', icon: '🛡', desc: 'Stay next to the carrier.', launches: true },
-  attack: { name: 'Attack', icon: '⚔', desc: 'Fly at an enemy ship and stop next to it. If it\'s destroyed, go for the nearest enemy ship.', needsTarget: true, launches: true },
-  intercept: { name: 'Intercept', icon: '✈', desc: 'Fly at the nearest enemy squadron (Escort if there are none).', launches: true },
+  attack: { name: 'Attack', icon: '⚔', desc: 'Fly at an enemy ship or squadron and attack it. If it\'s destroyed, go for the nearest enemy.', needsTarget: true, launches: true },
+  intercept: { name: 'Intercept', icon: '✈', desc: 'Fly at the nearest enemy squadron and attack it.', launches: true },
   return: { name: 'Return', icon: '↩', desc: 'Fly back to the carrier and dock again if it gets there.', launchedOnly: true },
 };
-export const SQUAD_ORDER_LIST = ['docked', 'escort', 'attack', 'intercept', 'return'];
+export const SQUAD_ORDER_LIST = ['docked', 'attack', 'intercept', 'return'];
