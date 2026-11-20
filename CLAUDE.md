@@ -87,6 +87,8 @@ for every ship from `data.js`. Battle size (Small/Medium/Large) is `BATTLE_SIZES
 The Protectorate and Djn'zuar rework (ships, weapons, squadrons, stances, criticals, Captains) is in
 `docs/space-battles-ships-v3.md`, which overrides v2 for those factions. Captains are `CAPTAINS` in
 `data.js` (one per ship, bought in fleet building). Duplicate ship types on a side get letters (Escort A, B).
+Ships and squadron craft are pixel-art sprites in `sprites.js` (letter grids, nose up, keyed by ship/squadron
+id; preview at `docs/ship-sprites.html`). Pirates have no sprites yet and still use the old outline shapes.
 
 ## Testing locally
 

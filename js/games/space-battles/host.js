@@ -17,6 +17,7 @@ import {
   squadBuyProblem, killValue, applySquadHits, critOnOf, boostCap,
   captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName,
 } from './rules.js';
+import { spriteCanvas, spriteSize } from './sprites.js';
 
 const PHASE_NAMES = {
   setup: 'Fleet Setup', intro: 'Battle stations', planMove: 'Plan Movement', move: 'Move',
@@ -1178,28 +1179,44 @@ export function start({ container, players, setPhoneState, onExit }) {
     ctx.globalAlpha = alpha;
     ctx.translate(cx, cy);
     ctx.rotate((p.heading * Math.PI) / 180);
-    const shape = SHAPES[def.class] || SHAPES.cruiser;
-    ctx.beginPath();
-    shape.forEach(([x, y], i) => {
-      const px = x * cls.length * S, py = y * cls.width * S;
-      if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
-    });
-    ctx.closePath();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 14;
-    ctx.fillStyle = `${color}22`;
-    ctx.fill();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    const sprite = spriteCanvas(s.type);
+    if (sprite) {
+      // Pixel-art sprite (drawn nose up, so turn it a quarter so the nose points along the heading).
+      // The glow in the player's color shows whose ship it is.
+      const px = (cls.length * S * 1.1 * spriteSize(s.type)) / sprite.height;
+      ctx.save();
+      ctx.rotate(Math.PI / 2);
+      ctx.imageSmoothingEnabled = false;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+      const w = sprite.width * px, h = sprite.height * px;
+      ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    } else {
+      // No sprite yet (Pirates): the old outline shape.
+      const shape = SHAPES[def.class] || SHAPES.cruiser;
+      ctx.beginPath();
+      shape.forEach(([x, y], i) => {
+        const px = x * cls.length * S, py = y * cls.width * S;
+        if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+      });
+      ctx.closePath();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = `${color}22`;
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
 
     // Shield marks: one thin arc per shield point in each 90° zone.
     // Gold marks = Shield Boost's shields above max (lost at the end of next round). While the
     // Shield Generator is damaged, every zone is drawn faint and dashed (the shields count as 0).
     const { hull, sh, temp } = shownStats(s, t);
-    const R = (cls.length / 2) * S + 6;
+    const R = (cls.length / 2) * S * (sprite ? Math.max(1, 1.1 * spriteSize(s.type)) : 1) + 6;
     const ZONE_ANGLE = { front: 0, right: 90, rear: 180, left: -90 };
     for (const z of ZONES) {
       const mid = (ZONE_ANGLE[z] * Math.PI) / 180;
@@ -1277,8 +1294,10 @@ export function start({ container, players, setPhoneState, onExit }) {
     return out;
   }
 
-  // A squadron: one small glowing circle per craft in its player's color. Craft that still have
-  // their shield get a light-blue ring; craft already lost are left out.
+  // A squadron: one small pixel sprite per craft, glowing in its player's color (a circle if the
+  // squadron has no sprite). Craft that still have their shield get a light-blue ring; craft
+  // already lost are left out.
+  const squadFacing = {}; // squadron id -> angle it last flew (radians)
   function drawSquad(q, t) {
     const S = scale;
     const p = poseOf(q, t);
@@ -1299,10 +1318,36 @@ export function start({ container, players, setPhoneState, onExit }) {
     const spots = craftSpots(n);
     const kScale = Math.max(1, 15 / (SQUAD_R * S)); // keep the group readable when zoomed out
     const r = Math.max(3, SQUAD_R * S * (n > 4 ? 0.26 : 0.32) * kScale);
+    // Craft face the way the squadron last flew (nose up until it has moved).
+    const path = anim?.kind === 'move' && anim.squadPaths?.[q.id];
+    if (path && Math.hypot(path.to.x - path.from.x, path.to.y - path.from.y) > 0.01) {
+      squadFacing[q.id] = Math.atan2(path.to.y - path.from.y, path.to.x - path.from.x);
+    }
+    const facing = squadFacing[q.id] ?? -Math.PI / 2;
+    const sprite = spriteCanvas(q.type);
     ctx.save();
     ctx.globalAlpha = alpha;
     spots.forEach(([ox, oy], i) => {
       const x = cx + ox * S * kScale, y = cy + oy * S * kScale;
+      if (sprite) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(facing + Math.PI / 2);
+        ctx.imageSmoothingEnabled = false;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 6;
+        const size = r * 2.4;
+        ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+        ctx.restore();
+        if (i < craftShields && hull > 0) {
+          ctx.strokeStyle = 'rgba(140,225,255,.9)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 1.2 + 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        return;
+      }
       ctx.shadowColor = color;
       ctx.shadowBlur = 8;
       ctx.fillStyle = def.role === 'bomber' ? color : `${color}66`;

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ship Sprites</title>
+<style>
+  body { margin: 0; padding: 24px 16px; background: #1b2a47; color: #e9eef7;
+         font-family: system-ui, sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  p.note { margin: 0 0 20px; color: #a9b6cc; font-size: 14px; }
+  h2 { font-size: 17px; margin: 24px 0 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+  .card { background: #13203a; border-radius: 8px; padding: 12px; text-align: center; }
+  .card canvas { display: block; margin: 0 auto 8px; image-rendering: pixelated; }
+  .card b { display: block; font-size: 14px; }
+  .card span { font-size: 12px; color: #a9b6cc; }
+  .prot h2 { color: #4dabf7; } .djn h2 { color: #ff922b; }
+</style>
+</head>
+<body>
+<h1>Ship sprites (draft)</h1>
+<p class="note">Drawn from <code>js/games/space-battles/sprites.js</code>. Shown at 6× size, nose up.</p>
+<div class="prot"><h2>Human Protectorate</h2><div class="row" id="prot"></div></div>
+<div class="djn"><h2>Djn'zuar</h2><div class="row" id="djn"></div></div>
+<script type="module">
+  import { SPRITES, drawSprite } from '../js/games/space-battles/sprites.js';
+  const groups = {
+    prot: [['torpedoBoat', 'Torpedo Boat', 'Corvette'], ['escort', 'Escort', 'Destroyer'],
+           ['lancer', 'Lancer', 'Cruiser'], ['strikeCarrier', 'Strike Carrier', 'Cruiser'],
+           ['fighters', 'Fighters', 'Squadron'], ['bombers', 'Bombers', 'Squadron']],
+    djn: [['grunt', 'Grunt', 'Corvette'], ['samurai', 'Samurai', 'Destroyer'],
+          ['brute', 'Brute', 'Cruiser'], ['queen', 'Queen', 'Battleship'],
+          ['swarmers', 'Swarmers', 'Squadron']],
+  };
+  const SCALE = 6;
+  for (const [el, list] of Object.entries(groups)) {
+    for (const [id, name, cls] of list) {
+      const s = SPRITES[id];
+      const cv = document.createElement('canvas');
+      cv.width = s.w * SCALE; cv.height = s.h * SCALE;
+      drawSprite(cv.getContext('2d'), id, 0, 0, SCALE);
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.append(cv);
+      card.insertAdjacentHTML('beforeend', `<b>${name}</b><span>${cls} · ${s.w}×${s.h}</span>`);
+      document.getElementById(el).append(card);
+    }
+  }
+</script>
+</body>
+</html>
