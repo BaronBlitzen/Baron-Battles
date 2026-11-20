@@ -11,6 +11,14 @@ export const games = [
     description: 'One Minotaur hunts. Everyone else races for the exits.',
     host: () => import('./labyrinth/host.js'),
     controller: () => import('./labyrinth/controller.js'),
+    // Shown in the phone's "?" help menu. Each item is one short paragraph (HTML allowed).
+    rules: [
+      'One player is secretly picked as the <b>Minotaur</b>. Everyone else is an <b>Escapee</b>.',
+      '<b>Escapees:</b> find your way through the maze to a <b>green exit</b> on the left or right edge.',
+      '<b>Minotaur:</b> tag Escapees before they get out. The Minotaur is a little faster, but can\'t leave the maze.',
+      '<b>Controls:</b> hold your thumb on the pad and slide toward where you want to go. Lift to stop. Watch the TV to see the maze.',
+      '<b>Winning:</b> if at least half the Escapees get out before the timer runs out, the Escapees win. Otherwise the Minotaur wins.',
+    ],
   },
   {
     id: 'space-battles',
@@ -21,5 +29,22 @@ export const games = [
     description: 'Plan fleet moves in secret, then watch the battle unfold.',
     host: () => import('./space-battles/host.js'),
     controller: () => import('./space-battles/controller.js'),
+    rules: [
+      'Two teams fight with fleets of starships. Pick a faction, then spend your points on ships (and Captains) on your phone.',
+      '<b>Each round has 4 steps:</b>',
+      '<b>1. Plan Movement</b> (secret): for each ship pick a <b>stance</b>, its <b>speed</b> and its <b>turns</b>. Carriers also give each squadron an order.',
+      '<b>2. Move:</b> every ship moves at the same time. Hitting asteroids, the map edge or enemy ships does damage.',
+      '<b>3. Plan Fire</b> (secret): pick which weapons to power and a target for each one. Weapons cost <b>Power</b>, and each ship only has so much, so choose wisely.',
+      '<b>4. Fire:</b> all shots happen at once.',
+      '<b>Hitting:</b> each shot rolls a 10-sided die. It hits on a 4 or higher (small, nimble ships are harder to hit). A 10 is a critical hit.',
+      '<b>Damage:</b> hits take down the shield on the side facing the attacker first, then the hull. A critical that gets past the shields breaks one of the ship\'s systems.',
+      '<b>Timer:</b> each planning step lasts up to 2 minutes and ends early when everyone taps Ready. If you run out of time, your ships fly straight and fire on their own.',
+      '<b>Winning:</b> destroy the enemy fleet or make them surrender. After 9 rounds, the team with the most hull left wins.',
+    ],
+    // Extra pages in the help menu. They open inside the phone page, so you stay in the room.
+    extras: [
+      { label: '📇 Ship cards', href: 'docs/ship-cards.html' },
+      { label: '🎖 Captains', href: 'docs/ship-cards.html#captains' },
+    ],
   },
 ];

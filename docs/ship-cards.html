@@ -136,6 +136,19 @@
   .footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 14px 12px; font-size: 15px; color: var(--muted); }
   .ratings { display: flex; gap: 8px; flex: none; font-family: 'Silkscreen', monospace; font-size: 11px; }
   .ratings span b { color: var(--text); margin-left: 1px; }
+
+  /* Captain cards */
+  .cap-title { max-width: 1400px; margin: 34px auto 12px; font-family: 'Silkscreen', monospace; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; color: var(--gold); display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+  .cap-title small { font-family: 'Pixelify Sans', sans-serif; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 14px; font-weight: 400; }
+  .cap-head { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 70px 12px 12px; background: var(--cream); color: var(--ink); }
+  .cap-head .cost { top: 50%; transform: translateY(-50%); }
+  .cap-icon { flex: none; width: 52px; height: 52px; display: grid; place-items: center; background: var(--ink); --pc: var(--fc); --b: 3px; margin: 3px; }
+  .cap-name h2 { margin: 0; font-family: 'Silkscreen', monospace; font-weight: 700; font-size: 17px; line-height: 1.1; }
+  .cap-name .class { font-family: 'Silkscreen', monospace; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #4a5a7a; margin-top: 2px; }
+  .cap-desc { margin: 0; font-size: 16px; line-height: 1.25; }
+  .hosts { display: flex; flex-wrap: wrap; gap: 10px; padding: 3px; }
+  .host { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; background: var(--panel-dark); --b: 2px; font-size: 15px; font-weight: 500; }
+  .host .ship { max-height: 32px; width: auto; }
 </style>
 </head>
 <body>
@@ -151,7 +164,7 @@
 <script type="module">
 import {
   FACTIONS, FACTION_ORDER, SHIPS, WEAPONS, CLASSES, RANGE_BANDS, ARC_DEFS, HIT, SPECIALS, SQUADRONS,
-  STANCES, STANCE_ORDER,
+  STANCES, STANCE_ORDER, CAPTAINS, CAPTAIN_ORDER,
 } from '../js/games/space-battles/data.js';
 import { SPRITES, PALETTE } from '../js/games/space-battles/sprites.js';
 
@@ -535,16 +548,60 @@ function card(type) {
   </article>`;
 }
 
-let filter = 'all';
+// ---------- Captain cards ----------
+
+// The ships (or squadrons) a captain can join, and the faction they belong to.
+function captainHosts(c) {
+  if (c.squadrons) return c.squadrons.map((t) => ({ type: t, def: SQUADRONS[t], squad: true }));
+  const types = c.ships || Object.keys(SHIPS).filter((t) => (c.factions || []).includes(SHIPS[t].faction));
+  return types.map((t) => ({ type: t, def: SHIPS[t], squad: false }));
+}
+const captainFaction = (c) => captainHosts(c)[0]?.def.faction;
+
+function captainCard(id) {
+  const c = CAPTAINS[id];
+  const hosts = captainHosts(c);
+  const f = FACTIONS[captainFaction(c)];
+  const stance = c.stance && STANCES[c.stance];
+  const hostChips = hosts.map((h) => {
+    const sp = SPRITES[h.type];
+    const img = sp ? shipImage(sp.rows.map((r) => [...r.padEnd(sp.w, '.')].map((ch) => PALETTE[ch] || null)), 1) : '';
+    return `<span class="host px">${img}${esc(h.def.name)}${h.squad ? ' squadron' : ''}</span>`;
+  }).join('');
+  return `<article class="card captain px" id="captain-${id}" style="--fc:${f.color}">
+    <div class="cap-head">
+      <div class="cap-icon px">${pxEmoji(c.icon, 40, 14)}</div>
+      <div class="cap-name"><h2>${esc(c.name)}</h2><div class="class">Captain · ${esc(f.short)}</div></div>
+      <div class="cost px">${c.cost}<small>PTS</small></div>
+    </div>
+    <div class="body">
+      <div class="panel px"><h3>Ability</h3><p class="cap-desc">${esc(c.desc)}</p>
+        ${stance ? `<div class="stances" style="margin-top:6px"><span class="stance px">${pxEmoji(stance.icon, 20, 10)}${esc(stance.name)}</span></div>` : ''}</div>
+      <div class="panel px"><h3>Can command</h3><div class="hosts">${hostChips}</div></div>
+    </div>
+  </article>`;
+}
+
+function captainsSection(fid) {
+  const ids = CAPTAIN_ORDER.filter((id) => captainFaction(CAPTAINS[id]) === fid);
+  if (!ids.length) return '';
+  return `<h3 class="cap-title">🎖 ${esc(FACTIONS[fid].short)} Captains <small>Bought in fleet building, one per ship. Lost if the ship is destroyed.</small></h3>
+    <div class="grid">${ids.map(captainCard).join('')}</div>`;
+}
+
+let filter = location.hash === '#captains' ? 'captains' : 'all';
 function render() {
   const main = document.getElementById('cards');
-  main.innerHTML = FACTION_ORDER.filter((fid) => filter === 'all' || filter === fid).map((fid) => {
+  const onlyCaptains = filter === 'captains';
+  main.innerHTML = FACTION_ORDER.filter((fid) => filter === 'all' || onlyCaptains || filter === fid).map((fid) => {
     const types = Object.keys(SHIPS).filter((t) => SHIPS[t].faction === fid).sort((a, b) => SHIPS[a].cost - SHIPS[b].cost);
+    const caps = captainsSection(fid);
+    if (onlyCaptains && !caps) return '';
     return `<h2 class="faction-title" style="color:${FACTIONS[fid].color}">${badge(fid, 2)}${esc(FACTIONS[fid].name)}<small>${esc(FACTIONS[fid].blurb)}</small></h2>
-      <div class="grid">${types.map(card).join('')}</div>`;
+      ${onlyCaptains ? '' : `<div class="grid">${types.map(card).join('')}</div>`}${caps}`;
   }).join('');
-  document.getElementById('filters').innerHTML = ['all', ...FACTION_ORDER].map((f) =>
-    `<button data-f="${f}" class="px ${f === filter ? 'on' : ''}">${f === 'all' ? 'All' : `${badge(f, 1)}${esc(FACTIONS[f].short)}`}</button>`).join('');
+  document.getElementById('filters').innerHTML = ['all', ...FACTION_ORDER, 'captains'].map((f) =>
+    `<button data-f="${f}" class="px ${f === filter ? 'on' : ''}">${f === 'all' ? 'All' : f === 'captains' ? '🎖 Captains' : `${badge(f, 1)}${esc(FACTIONS[f].short)}`}</button>`).join('');
 }
 document.getElementById('filters').addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -555,7 +612,7 @@ document.getElementById('filters').addEventListener('click', (e) => {
 document.getElementById('title').insertAdjacentHTML('afterbegin', badge('protectorate', 2));
 render();
 // Jump to a ship when the link has #shipType (e.g. from the phone's shipyard).
-if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+if (location.hash && location.hash !== '#captains') document.getElementById(location.hash.slice(1))?.scrollIntoView();
 </script>
 </body>
 </html>

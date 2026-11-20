@@ -2,6 +2,7 @@
 // the current game needs.
 import { roomChannel, session, local, escapeHtml } from './supabase.js';
 import { games } from './games/registry.js';
+import { showHelpButton } from './help.js';
 
 const app = document.getElementById('app');
 const params = new URLSearchParams(location.search);
@@ -26,6 +27,7 @@ let latestState = null;
 let wakeLock = null;
 
 function renderJoin(error = '') {
+  showHelpButton(false);
   app.innerHTML = `
     <form class="join-form">
       <h1>Poulson <span>Mini Games</span></h1>
@@ -54,6 +56,7 @@ function renderJoin(error = '') {
 }
 
 function renderMessage(title, sub = '', showBack = false) {
+  showHelpButton(false);
   destroyController();
   app.innerHTML = `
     <div class="phone-msg">
@@ -65,6 +68,7 @@ function renderMessage(title, sub = '', showBack = false) {
 }
 
 function renderWaiting(me) {
+  showHelpButton(true);
   destroyController();
   app.innerHTML = `
     <div class="phone-msg">
@@ -139,6 +143,7 @@ async function onState(state) {
   if (controllerGame !== game.id) {
     if (mounting) return; // the state will be applied once loading finishes
     destroyController();
+    showHelpButton(false);
     app.innerHTML = '<div class="phone-msg"><h2>Loading…</h2></div>';
     mounting = game.controller().then((mod) => {
       app.innerHTML = '';

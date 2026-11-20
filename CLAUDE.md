@@ -67,7 +67,9 @@ Check with `curl -s -o /dev/null -w "%{http_code}" https://baronblitzen.github.i
 
 1. Create `js/games/<id>/host.js` and `js/games/<id>/controller.js` (copy `labyrinth/`).
 2. Add an entry to `js/games/registry.js` (id, name, icon, minPlayers, maxPlayers,
-   description, and the `host` and `controller` dynamic imports).
+   description, and the `host` and `controller` dynamic imports). Also give it `rules` (short
+   paragraphs) and optionally `extras` (pages like ship cards): the phone's "?" help menu
+   (`js/help.js`, shown on the waiting screen) reads them.
 
 Host module: `export function start({ container, players, setPhoneState, onExit })` returns
 `{ handleInput(id, msg), setOnline?(onlineIdSet), stop() }`. Call `setPhoneState(obj)` whenever
