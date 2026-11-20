@@ -294,6 +294,9 @@ export const TIMING = {
 export const FLEET = {
   sidePoints: 60,
   maxShipsPerSide: 10,
+  // The battle ends after this many rounds; then the side with the most hull left on its living
+  // ships wins (equal hull = draw).
+  maxRounds: 9,
 };
 
 // Battle sizes, picked on the TV during setup. Points and the ship cap per side are FLEET × `mult`;
@@ -374,11 +377,12 @@ export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targ
 //   alwaysCommand – this carrier's squadrons always get Command's +1 accuracy (Command isn't offered)
 //   accuracy      – squadron: + accuracy; ignoreFirstHit – squadron ignores the first hit each round
 //   pickCrit      – the player picks which system this ship's criticals damage (in Plan Fire)
+//   fireRotate    – may rotate this many clicks in place during Plan Fire (before shooting)
 //   hull / speed / clicks – + max hull, + max speed, + turn clicks per segment
 export const CAPTAINS = {
   shuna: { name: 'Shuna, Dolphin Warrior', short: 'Shuna', icon: '🐬', cost: 2, ships: ['torpedoBoat'], freeWild: true,
     desc: 'Every round you may use Wild Maneuvers AND another stance.' },
-  verity: { name: 'Samuel Verity', short: 'Verity', icon: '🛡', cost: 3, ships: null, factions: ['protectorate', 'djnzuar'], shieldRegen: 1,
+  verity: { name: 'Samuel Verity', short: 'Verity', icon: '🛡', cost: 3, ships: ['escort'], shieldRegen: 1,
     desc: 'End of every round: regain 1 shield (front first; if it\'s full, the emptier side; if both sides are full, the rear). Not while the Shield Generator is damaged.' },
   shrike: { name: 'Shrike Leonitas', short: 'Shrike', icon: '☠', cost: 3, ships: ['lancer'], stance: 'exterminate',
     desc: 'Unlocks the Exterminate stance: your Particle Lance fires twice that round (no extra Power).' },
@@ -394,6 +398,8 @@ export const CAPTAINS = {
     desc: '+2 hull.' },
   uen: { name: 'Queen Uen', short: 'Uen', icon: '👸', cost: 3, ships: ['queen'], speed: 1, clicks: 1,
     desc: '+1 max speed and +1 turn click per segment.' },
+  kairos: { name: 'Kairos', short: 'Kairos', icon: '⏳', cost: 2, ships: ['torpedoBoat'], fireRotate: 1,
+    desc: 'In Plan Fire you may rotate your ship 1 click (15°) left or right before shooting, to line up the torpedo or turn a stronger shield toward the enemy. Not while the Maneuvering Thrusters are damaged.' },
 };
 export const CAPTAIN_ORDER = Object.keys(CAPTAINS);
 

@@ -156,6 +156,16 @@ export function captainChoices(type, squad = false) {
 
 export const maxHull = (ship) => shipDef(ship).hull + (captainOf(ship)?.hull || 0);
 
+// Kairos: rotation (in clicks, + = right) the ship may make in Plan Fire. Invalid → 0.
+export function sanitizeRotate(ship, r) {
+  const max = captainOf(ship)?.fireRotate || 0;
+  if (!max || critCount(ship, 'thrusters') || !Number.isInteger(r) || Math.abs(r) > max) return 0;
+  return r;
+}
+
+// A copy of the ship turned `clicks` in place (used to aim with Kairos before shooting).
+export const rotatedShip = (ship, clicks) => (clicks ? { ...ship, heading: normAngle(ship.heading + clicks * MOVE.clickDegrees) } : ship);
+
 // Samuel Verity: the zone that regains a shield at the end of the round, or null (all full, or
 // the Shield Generator is damaged). Front first, then the side with fewer shields (left on a tie),
 // then the rear.

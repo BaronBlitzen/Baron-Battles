@@ -13,7 +13,7 @@ import {
   stanceOptions, shipStances, maxSpeed, isSquad, squadDef, unitName, endTurnClicks, weaponOffline, boostCap,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
   carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf,
-  captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf,
+  captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
 } from './rules.js';
 
 // "🛡 Samuel Verity" style captain tag (empty without a captain).
@@ -54,6 +54,7 @@ export function mount({ container, me, sendInput }) {
   let repairDraft = {}; // shipId -> Damage Control choice { kind, zones? } (none = default)
   let holdDraft = {}; // shipId -> Smuggler's Hold choice { target, kind } (none = not used)
   let critDraft = {}; // shipId -> critical system id (Seir-Seir; none = random)
+  let rotateDraft = {}; // shipId -> clicks the ship turns before shooting (Kairos; none = 0)
   let selShip = null;
   let selSeg = 0;
   let selRow = 0;
@@ -83,6 +84,7 @@ export function mount({ container, me, sendInput }) {
     repairDraft = {};
     holdDraft = {};
     critDraft = {};
+    rotateDraft = {};
     for (const s of myLiving()) {
       moveDraft[s.id] = defaultMovePlan(s);
       if (hasWing(s)) moveDraft[s.id].squads = Object.fromEntries(wingSquads(s.id).filter((q) => q.alive).map((q) => [q.id, { ...q.order }]));
@@ -101,7 +103,7 @@ export function mount({ container, me, sendInput }) {
       setup: 'Fleet Setup', intro: 'Battle stations', planMove: 'Plan Movement', move: 'Moving…',
       planFire: 'Plan Fire', fire: 'Firing…', over: 'Battle over',
     }[state.phase];
-    const round = state.phase === 'setup' ? '' : `Round ${Math.max(1, state.round)} · `;
+    const round = state.phase === 'setup' ? '' : `Round ${Math.max(1, state.round)}/${FLEET.maxRounds} · `;
     const f = state.teams?.[myId()];
     return `
       <div class="sbp-head" style="--fc:${f ? FACTIONS[f].color : 'var(--line)'}">
@@ -594,8 +596,37 @@ export function mount({ container, me, sendInput }) {
       </div>`;
   }
 
-  function viewPlanFire() {
+  // The ship as it will shoot: turned by Kairos's rotation, if any.
+  const aimShip = (s) => rotatedShip(s, rotateDraft[s.id] || 0);
+
+  // Kairos: turn 1 click left or right before shooting.
+  function rotatePicker(s) {
+    const max = captainOf(s)?.fireRotate || 0;
+    if (!max) return '';
+    if (critCount(s, 'thrusters')) return `<p class="sbp-burn">⏳ Kairos can't turn the ship: Maneuvering Thrusters damaged.</p>`;
+    const cur = rotateDraft[s.id] || 0;
+    const opt = (r, label) => `<button data-act="rotate" data-r="${r}" class="${cur === r ? 'on' : ''}">${label}</button>`;
+    return `
+      <div class="sbp-arc on">
+        <div class="sbp-arc-head"><b>⏳ Kairos: turn before firing</b><small>${max * 15}° max</small></div>
+        <div class="sbp-repair">${opt(-max, `◀ Left ${max * 15}°`)}${opt(0, 'Stay')}${opt(max, `Right ${max * 15}° ▶`)}</div>
+        <p class="sbp-small muted">Lines up the torpedo or turns a stronger shield toward the enemy. The targets below update.</p>
+      </div>`;
+  }
+
+  // Changing the rotation: keep only the aimed weapons that still have their target.
+  function setRotate(r) {
     const s = shipById(selShip);
+    const rot = sanitizeRotate(s, r);
+    if (rot) rotateDraft[s.id] = rot; else delete rotateDraft[s.id];
+    const kept = sanitizeFirePlan(aimShip(s), draftPlan(s.id), units(), state.asteroids);
+    fireDraft[s.id] = Object.fromEntries(kept.map((a) => [a.arc, { ...a.targets }]));
+    selRow = 0;
+    render();
+  }
+
+  function viewPlanFire() {
+    const s = aimShip(shipById(selShip));
     const draft = fireDraft[s.id];
     const rows = fireRows(s);
     const rowIndex = (arc, wi, id) => rows.findIndex((x) => x.arc === arc && x.wi === wi && x.id === id);
@@ -608,6 +639,7 @@ export function mount({ container, me, sendInput }) {
         <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}${s.letter ? ` ${s.letter}` : ""}</b> <small class="muted">each weapon picks its own target</small></div>
         <div class="sbp-power"><b>⚡ Power ${used}/${power}</b><span class="sbp-power-bar">${Array.from({ length: Math.max(power, used) }, (_, i) => `<i class="${i < used ? 'on' : ''}"></i>`).join('')}</span><small>${power - used > 0 ? `${power - used} unused (wasted)` : 'all used'}</small></div>
         ${fireStanceNote(s)}
+        ${rotatePicker(s)}
         ${repairPicker(s)}
         ${critPicker(s)}
         ${holdPicker(s)}
@@ -662,7 +694,7 @@ export function mount({ container, me, sendInput }) {
   function drawMap() {
     const canvas = root.querySelector('.sbp-map');
     if (!canvas) return;
-    const s = shipById(selShip);
+    const s = state.phase === 'planFire' ? aimShip(shipById(selShip)) : shipById(selShip);
     const w = canvas.clientWidth;
     const h = Math.round((w * VIEW_H) / VIEW_W);
     const dpr = window.devicePixelRatio || 1;
@@ -777,7 +809,7 @@ export function mount({ container, me, sendInput }) {
     for (const o of state.ships) {
       if (!o.alive) continue;
       const c = person(o.owner).color;
-      outline(o, o, c, o.id === s.id ? `${c}55` : `${c}22`, o.id === s.id ? 3 : 2);
+      outline(o.id === s.id ? s : o, o, c, o.id === s.id ? `${c}55` : `${c}22`, o.id === s.id ? 3 : 2);
     }
     // Squadrons: small circles with their role letter.
     for (const q of squads()) {
@@ -1007,7 +1039,7 @@ export function mount({ container, me, sendInput }) {
         : Object.entries(fireDraft[s.id]).filter(([, m]) => Object.keys(m).length).map(([arc, targets]) => ({ arc, targets }));
     }
     const msg = { type: state.phase, round: state.round, ready: true, ships };
-    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; }
+    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; msg.rotates = { ...rotateDraft }; }
     sendInput(msg);
     buzz(20);
   }
@@ -1043,6 +1075,7 @@ export function mount({ container, me, sendInput }) {
     }
     else if (act === 'captain') sendInput({ type: 'captain', index: Number(b.dataset.i), captain: b.dataset.c || null });
     else if (act === 'squadCaptain') sendInput({ type: 'squadCaptain', index: Number(b.dataset.i), slot: Number(b.dataset.k), captain: b.dataset.c || null });
+    else if (act === 'rotate') setRotate(Number(b.dataset.r));
     else if (act === 'critPick') { if (b.dataset.c) critDraft[selShip] = b.dataset.c; else delete critDraft[selShip]; render(); }
     else if (act === 'endTurn') { e.stopPropagation(); turnEnd(Number(b.dataset.d)); }
     else if (act === 'mine') { const d = moveDraft[selShip]; d.mine = !d.mine; render(); }
@@ -1098,7 +1131,7 @@ export function mount({ container, me, sendInput }) {
       else if (k === 'Enter') send();
       else return;
     } else if (planning && state.phase === 'planFire') {
-      const rows = fireRows(shipById(selShip));
+      const rows = fireRows(aimShip(shipById(selShip)));
       if (k === 'ArrowUp' || k === 'w') { selRow = Math.max(0, selRow - 1); render(); }
       else if (k === 'ArrowDown' || k === 's') { selRow = Math.min(Math.max(0, rows.length - 1), selRow + 1); render(); }
       else if (k === ' ' && rows[selRow]) pickTarget(rows[selRow].arc, rows[selRow].wi, rows[selRow].id);

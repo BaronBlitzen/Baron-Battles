@@ -146,7 +146,7 @@
 <script type="module">
 import {
   FACTIONS, FACTION_ORDER, SHIPS, WEAPONS, CLASSES, RANGE_BANDS, ARC_DEFS, HIT, SPECIALS, SQUADRONS,
-  STANCES, CLASS_STANCES,
+  STANCES, STANCE_ORDER,
 } from '../js/games/space-battles/data.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -290,7 +290,7 @@ function card(type) {
         <h3>Special Abilities</h3>
         ${[...abilities, ...traits].map((a) => `<div class="ability"><div class="icon">${a.icon}</div><p><strong>${esc(a.name)}</strong>${a.faction ? '<span class="tag">Faction</span>' : ''} ${esc(a.text)}</p></div>`).join('')}
         <h3 style="margin-top:8px">Stances</h3>
-        <div class="stances">${(CLASS_STANCES[def.class] || []).map((s) => `<span class="stance">${STANCES[s].icon} ${esc(STANCES[s].name)}</span>`).join('')}</div>
+        <div class="stances">${STANCE_ORDER.filter((s) => s !== 'balanced' && !STANCES[s].captain && (!STANCES[s].carrierOnly || def.squadrons) && (!STANCES[s].ships || STANCES[s].ships.includes(type))).map((s) => `<span class="stance">${STANCES[s].icon} ${esc(STANCES[s].name)}</span>`).join('')}</div>
       </div>
     </div>
     <div class="footer"><i>"${esc(def.desc)}"</i>

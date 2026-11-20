@@ -17,8 +17,9 @@ the TV plays out the whole round at once.
 - **Teams = factions.** There are always **2 teams**. Each team is one faction, and the third faction
   sits out. (More teams can come later, once there are more factions.)
 - **Fleet size:** no more than **10 ships per side**. Squadrons don't count toward the 10.
-- **Game length:** **no round limit.** A battle ends when one team has no ships left, when a team
-  surrenders, or (in objective missions) when a team reaches the score goal (see §10).
+- **Game length:** ✅ **9 rounds.** A battle ends when one team has no ships left, when a team
+  surrenders, or (in objective missions) when a team reaches the score goal (see §10). After round 9
+  the side with the **most hull left on its living ships wins** (equal hull = draw).
 
 ### Setup flow
 
@@ -86,7 +87,7 @@ the TV plays out the whole round at once.
 - **Deployment order:** each player's ships sit together, players in join order, spread evenly from
   top to bottom.
 - **Play again:** goes back to the start of Space Battles setup (no teams, no fleets).
-- **TV top bar:** shows "Fleet value" until kill-point scores replace it (step 7). No round limit.
+- **TV top bar:** shows "Round X/9" and each side's hull left.
 
 ---
 

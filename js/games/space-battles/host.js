@@ -15,7 +15,7 @@ import {
   needToHit, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTarget, latchTarget,
   launchSpot, canDock, mineSpot, sanitizeHold, sizeRules, sizeForPlayers,
   squadBuyProblem, killValue, applySquadHits, critOnOf, boostCap,
-  captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName,
+  captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName, sanitizeRotate, rotatedShip,
 } from './rules.js';
 import { spriteCanvas, spriteSize } from './sprites.js';
 
@@ -174,6 +174,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   let repairPlans = {}; // playerId -> { shipId: Damage Control repair choice }
   let holdPlans = {}; // playerId -> { shipId: Smuggler's Hold choice { target, kind } }
   let critPlans = {}; // playerId -> { shipId: critical system id } (Seir-Seir picks the critical)
+  let rotatePlans = {}; // playerId -> { shipId: clicks } (Kairos turns before shooting)
   let mines = []; // [{ id, x, y }] dropped by Mine Drop (neutral)
   let mineCount = 0;
   let anim = null;
@@ -508,6 +509,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       repairPlans = {};
       holdPlans = {};
       critPlans = {};
+      rotatePlans = {};
     }
     ready = {};
     movePlans = {};
@@ -537,13 +539,14 @@ export function start({ container, players, setPhoneState, onExit }) {
       const p = msg.ships?.[s.id];
       plans[s.id] = kind === 'planMove'
         ? sanitizeMovePlan(s, p, ships, squads) || defaultMovePlan(s)
-        : sanitizeFirePlan(s, p, units(), asteroids);
+        : sanitizeFirePlan(rotatedShip(s, sanitizeRotate(s, msg.rotates?.[s.id])), p, units(), asteroids);
     }
     store[id] = plans;
     if (kind === 'planFire') {
       repairPlans[id] = {};
       holdPlans[id] = {};
       critPlans[id] = {};
+      rotatePlans[id] = {};
       for (const s of mine) {
         const r = sanitizeRepair(s, msg.repairs?.[s.id]);
         if (r) repairPlans[id][s.id] = r;
@@ -551,6 +554,8 @@ export function start({ container, players, setPhoneState, onExit }) {
         if (h) holdPlans[id][s.id] = h;
         const cp = msg.critPicks?.[s.id];
         if (captainOf(s)?.pickCrit && CRIT_POOL.includes(cp)) critPlans[id][s.id] = cp;
+        const rot = sanitizeRotate(s, msg.rotates?.[s.id]);
+        if (rot) rotatePlans[id][s.id] = rot;
       }
     }
     ready[id] = true;
@@ -732,6 +737,14 @@ export function start({ container, players, setPhoneState, onExit }) {
   const critLabel = (c) => `${CRITICALS[c.id].name}${c.weapon ? ` (${WEAPONS[c.weapon].name})` : ''}`;
 
   function resolveFire() {
+    // Kairos: ships turn in place first (their fire plans were checked with the new heading).
+    const turned = [];
+    for (const s of ships) {
+      const rot = s.alive && ready[s.owner] ? rotatePlans[s.owner]?.[s.id] : 0;
+      if (!rot) continue;
+      s.heading = rotatedShip(s, rot).heading;
+      turned.push([s.id, rot]);
+    }
     // All attacks land together on copies, so a ship destroyed now still fired.
     const next = ships.map(clone);
     const nextSquads = squads.map(cloneSquad);
@@ -778,6 +791,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       tagOnce.add(`${shipId}|${text}`);
       tags.push({ shipId, text, color, at });
     };
+    for (const [id, rot] of turned) tag(id, `⏳ Kairos turned ${rot < 0 ? 'left' : 'right'}`, '#8ce1ff', t0 + 100);
     const grappledBy = {}; // target id -> first attacker that grappled it
     const shrugged = new Set(); // Iceman Flaggs squadrons that already ignored a hit this round
     for (const a of attacks) {
@@ -1000,6 +1014,16 @@ export function start({ container, players, setPhoneState, onExit }) {
     return false;
   }
 
+  // Hull left on a side's living ships (decides the winner after the last round).
+  const hullLeft = (f, list = ships) => list.filter((s) => s.alive && s.faction === f).reduce((n, s) => n + Math.max(0, s.hull), 0);
+
+  // After round FLEET.maxRounds: the side with the most hull left wins (a tie is a draw).
+  function endByHull() {
+    const hulls = battleFactions.map((f) => [f, hullLeft(f)]).sort((a, b) => b[1] - a[1]);
+    const tie = hulls.length > 1 && hulls[0][1] === hulls[1][1];
+    return endGame(tie ? null : hulls[0][0], `Time's up after ${FLEET.maxRounds} rounds: ${tie ? 'equal hull left' : 'most hull left'}`);
+  }
+
   // ---------- Surrender (rules §1) ----------
   // A team surrenders once every online teammate has tapped Surrender (taps can be taken back).
   const battleRunning = () => ['intro', 'planMove', 'move', 'planFire', 'fire'].includes(phase);
@@ -1046,7 +1070,7 @@ export function start({ container, players, setPhoneState, onExit }) {
         <div class="sb-results">
           ${battleFactions.map((f) => `
             <div>
-              <h3 style="color:${FACTIONS[f].color}">${escapeHtml(FACTIONS[f].short)} <small class="muted">fleet value ${result.values[f]}</small></h3>
+              <h3 style="color:${FACTIONS[f].color}">${escapeHtml(FACTIONS[f].short)} <small class="muted">${hullLeft(f)} hull left</small></h3>
               <ul>
                 ${ships.filter((s) => s.faction === f).map((s) => `
                   <li><span class="dot" style="background:${colorOf(s.owner)}"></span>${escapeHtml(unitName(s))}
@@ -1082,8 +1106,11 @@ export function start({ container, players, setPhoneState, onExit }) {
       phoneShips = null;
       phoneSquads = null;
       if (!checkWinner()) {
-        round++;
-        startPlan('planMove');
+        if (round >= FLEET.maxRounds) endByHull();
+        else {
+          round++;
+          startPlan('planMove');
+        }
       }
     }
   }
@@ -1094,10 +1121,10 @@ export function start({ container, players, setPhoneState, onExit }) {
     const s = secondsLeft();
     const timer = s === null ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
     const phaseText = phase === 'setup' ? 'Fleet Setup'
-      : phase === 'over' ? 'Battle over' : `Round ${Math.max(1, round)} · ${PHASE_NAMES[phase]}`;
+      : phase === 'over' ? 'Battle over' : `Round ${Math.max(1, round)}/${FLEET.maxRounds} · ${PHASE_NAMES[phase]}`;
     let sub = '';
     if (phase !== 'setup') {
-      const teamsHtml = battleFactions.map((f) => `<span style="color:${FACTIONS[f].color}">${escapeHtml(FACTIONS[f].short)} ${fleetValue(phoneShips || ships, f, phoneSquads || squads)}</span>`).join(' <span class="muted">vs</span> ');
+      const teamsHtml = battleFactions.map((f) => `<span style="color:${FACTIONS[f].color}">${escapeHtml(FACTIONS[f].short)} ${hullLeft(f, phoneShips || ships)}</span>`).join(' <span class="muted">vs</span> ');
       let chips = '';
       if (phase === 'planMove' || phase === 'planFire') {
         chips = order.filter((id) => shipsOf(id).length).map((id) => {
@@ -1105,7 +1132,7 @@ export function start({ container, players, setPhoneState, onExit }) {
           return `<span class="sb-chip ${st}"><span class="dot" style="background:${colorOf(id)}"></span>${escapeHtml(nameOf(id))}${st === 'ready' ? ' ✔' : st === 'off' ? ' (offline)' : ''}</span>`;
         }).join('');
       }
-      sub = `<div class="sb-fleetvals">Fleet value: ${teamsHtml}</div><div class="sb-chips">${chips}</div>`;
+      sub = `<div class="sb-fleetvals">Hull left: ${teamsHtml}</div><div class="sb-chips">${chips}</div>`;
     }
     const html = `${phaseText}|${timer}|${sub}`;
     if (html === lastHud) return;

@@ -173,7 +173,7 @@ A captain is an upgrade bought for one ship (or one squadron) during fleet build
 | Captain | Goes on | Cost | Ability |
 |---|---|---|---|
 | **Shuna, Dolphin Warrior** | Torpedo Boat | 2 | Every round you may use **Wild Maneuvers AND another stance** (their effects add up). |
-| **Samuel Verity** | Any Protectorate or Djn'zuar ship | 3 | End of every round: **regain 1 shield**: front if it isn't full; else the side with fewer shields (left on a tie); else the rear. Not while the Shield Generator is damaged. |
+| **Samuel Verity** | Escort | 3 | End of every round: **regain 1 shield**: front if it isn't full; else the side with fewer shields (left on a tie); else the rear. Not while the Shield Generator is damaged. |
 | **Shrike Leonitas** | Lancer | 3 | Unlocks the **Exterminate** stance. |
 | **Amelia Dangerfield** | Strike Carrier | 3 | **Born Commander:** your squadrons always get Command's +1 accuracy (it doesn't stack with Command, so Command isn't offered), leaving you free to pick another stance. |
 | **Iceman Flaggs** | Fighters (squadron) | 2 | Squadron **+1 accuracy**, and the **first hit on it each round is ignored**. |
@@ -181,6 +181,7 @@ A captain is an upgrade bought for one ship (or one squadron) during fleet build
 | **Seir-Seir** | Samurai | 2 | When this ship causes a critical, **you choose which system** it damages (picked in Plan Fire each round; if the target already has that one damaged, it's random). |
 | **King Tulbrik** | Brute | 2 | **+2 hull.** |
 | **Queen Uen** | Queen | 3 | **+1 max speed** and **+1 turn click** per segment. |
+| **Kairos** | Torpedo Boat | 2 | In **Plan Fire**, may **rotate the ship 1 click (15°) left or right** before shooting (to line up the torpedo or turn a stronger shield toward the enemy). The rotation happens just before all attacks, so it also changes which shield gets hit. Not while the Maneuvering Thrusters are damaged. |
 
 "Fires twice" = the weapon makes two separate attacks at the same target. Once-per-game weapons
 and point-defense never fire twice.
