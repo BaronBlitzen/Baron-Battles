@@ -16,9 +16,7 @@ export const FACTIONS = {
     available: true,
     blurb: 'Strike carriers, long-range lasers, torpedo boats',
     edge: 'west', // deployment edge (null = whichever edge is free)
-    // Hangar repair: at the end of the round, squadrons docked in their living carrier get their
-    // craft's shields back (lost craft don't come back).
-    traits: { ram: null, home: null, hangarRepair: true },
+    traits: { ram: null, home: null },
   },
   djnzuar: {
     id: 'djnzuar',

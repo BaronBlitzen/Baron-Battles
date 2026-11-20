@@ -878,7 +878,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       }
     }
 
-    // ----- End of round: Critical Repairs, Shield Boost running out, hangar repair, fires, acid. -----
+    // ----- End of round: Critical Repairs, Shield Boost running out, fires, acid. -----
     const acidAt = t0 + ACID_MS;
     let acidKill = false, endOfRound = false;
     for (const s of next) {
@@ -928,19 +928,6 @@ export function start({ container, players, setPhoneState, onExit }) {
         tag(t.id, c ? `📦 fixed ${CRITICALS[c.id]?.name || 'a critical'}` : '📦 Nothing to fix', '#8ce99a', acidAt);
       }
     }
-    // Hangar repair (Protectorate): squadrons docked in a living carrier get their craft's shields
-    // back. The label goes on the carrier, since docked squadrons aren't drawn.
-    const repaired = {};
-    for (const q of nextSquads) {
-      const c = nextById[q.carrier];
-      if (!FACTIONS[q.faction].traits.hangarRepair || !q.alive || !q.docked || q.hull <= 0 || !c?.alive || c.hull <= 0) continue;
-      const h = squadDef(q).shield ? q.hull - q.shields : 0;
-      if (h <= 0) continue;
-      q.shields += h;
-      endOfRound = true;
-      repaired[c.id] = (repaired[c.id] || 0) + h;
-    }
-    for (const [id, h] of Object.entries(repaired)) tag(id, `✈ +${h} squadron shield${h > 1 ? 's' : ''} (hangar)`, '#8ce99a', acidAt);
     // Hull Fire: 1 hull damage (caught before this round), ignoring shields.
     for (const s of next) {
       if (!critCount(s, 'hull') || s.hull <= 0) continue;

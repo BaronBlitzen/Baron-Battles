@@ -38,13 +38,13 @@ and report each step before starting the next, so the user can playtest in betwe
      after firing. Lancer front arc = 1 Railgun + the one-time Torpedo Volley.
    - Ion (shield-only damage), Acid (delayed hull damage), Grapple (pull + no speed-up), Disruptor
      (−1 click next round), Flechette (better vs squadrons, used in step 5), Particle Lance.
-3. **Stances** — **built** (decisions in rules §5 "Stance details") (rules §5, incl. the decided details, Trained helms, Samurai engineers, no-repeat rule,
+3. **Stances** — **built** (decisions in rules §5 "Stance details") (rules §5, incl. the decided details, Samurai engineers, no-repeat rule,
    stance icons on the TV, Damage Control choice on the phone).
 4. **Criticals** — **built** (decisions in rules §7 "Critical details"). Boarding Harpoon auto-crit included.
 5. **Squadrons** — **built** (decisions in rules §8 "Launch and order details" and "Squadron details"):
    buying them in fleet building, docked until launched, one order per squadron (Stay docked / Escort /
    Attack / Intercept / Return), movement after ships, automatic attacks, point-defense, Warden Screen,
-   Hangar repair (docked only), Boarding Pods, kill points (tracked, not shown yet), Comms Down.
+   Boarding Pods, kill points (tracked, not shown yet), Comms Down.
 6. **Obstacles** (rules §2): each map picks 2 of the 5 obstacle types at random. Nebula, planet
    (gravity), debris field, mines, plus the existing random asteroids.
 7. **Missions + scores** (rules §10): kill points on the TV, Control Points, Salvage, Escort, Station
@@ -91,8 +91,8 @@ Key details:
   A weapon left out of `targets` holds its fire. Each weapon is its own attack (`rollWeapon` in host.js).
   Once-per-game weapons are marked in `ship.used` when fired. Acid due this round burns at the end of
   `resolveFire`; Grapple pulls are animated from `anim.pulls`, and effect labels from `anim.tags`.
-- **Stances** (step 3): `STANCES` / `STANCE_ORDER` / `CLASS_STANCES` in data.js hold the numbers; faction traits
-  `trainedHelms` and `repair` (Samurai). Move plan = `{ speed, clicks, stance: { id, zone?, target? } }`.
+- **Stances** (step 3): `STANCES` / `STANCE_ORDER` / `CLASS_STANCES` in data.js hold the numbers; faction trait
+  `repair` (Samurai). Move plan = `{ speed, clicks, stance: { id, zone?, target? } }`.
   rules.js: `stanceOptions` (no repeats via `ship.lastStance`), `speedOptions(ship, stanceId)`,
   `maxClicks(ship, speed, stanceId)`, `sanitizeStance`, `maxArcs`, `huntTarget`, `shotBonus`, `arcShots`
   (final shots per weapon), `stanceDamage` (Brace / Overcharge), `shieldsOff` + `ship.tempShields` (Shield

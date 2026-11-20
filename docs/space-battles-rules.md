@@ -162,7 +162,7 @@ as every player who still has ships (and is online) taps **Ready**.
 | **2. Move** | Watch | **Stance icons appear** over every ship. Ships move at the same time, then squadrons move |
 | **3. Plan: Fire** | For each ship: pick up to 2 arcs, and a target **for each weapon** in those arcs. Once-per-game weapons are held unless the player fires them | Map |
 | **4. Fire** | Watch | All attacks (ships, squadrons, point-defense) fire together. Damage numbers pop up. Wrecks are removed after everything lands |
-| **5. End of round** | Watch | Damage Control repairs, Hangar repair, critical effects (Bridge Fire, Acid), Boarding Pod latches, objective scoring, round counter |
+| **5. End of round** | Watch | Damage Control repairs, critical effects (Bridge Fire, Acid), Boarding Pod latches, objective scoring, round counter |
 
 **If a player isn't ready when the timer ends:**
 - Stance: **Balanced**.
@@ -215,7 +215,6 @@ Movement). Stances are revealed on the TV when the Move starts. A stance lasts t
   shields, else hull. Shields can't go above their starting value (hull not above max). **Samurai engineers** (Djnzuar):
   3 shields or 1 hull, **and also** removes 1 critical.
 - **Damage Control "must slow down by 1":** the phone only offers speed −1 (unless already at 0–1).
-- **Trained helms** (Protectorate): +1 extra turn click when using Evasive or Full Burn.
 - **Every ship is home** (Pirates): the free Full Burn move has none of Full Burn's costs.
 - **"+1 shot"** (Overcharge, Hunter) goes on **every weapon** the ship fires that round (Hunter: every
   weapon aimed at the marked ship). The "−1 shot" penalties stay **1 per arc**, taken after the bonus.
@@ -357,8 +356,6 @@ PD shots go at the nearest one**.
 - **Points:** each squadron is worth 1 kill point.
 - **Warden Screen:** enemy squadrons attacking friendly ships within close range of a Warden lose
   1 shot.
-- **Hangar repair** (Protectorate): at the end of the round, each squadron **docked** in a living
-  carrier restores 1 hull (not above max).
 
 ### Launch and order details (decided)
 - **Launching:** a squadron launched in Plan Movement appears next to its carrier after the ships
@@ -395,7 +392,7 @@ PD shots go at the nearest one**.
 - **TV:** the top bar's fleet value counts each living squadron (docked or not) as 1. Kill points are
   tracked (shown from step 7). A launched squadron is a small circle in its player's color with
   F / B / P and hull pips; a carrier's label shows how many squadrons are docked (✈2).
-- End of round order: Damage Control, Hangar repair, Bridge Fire, Acid, Boarding Pod latches.
+- End of round order: Damage Control, Bridge Fire, Acid, Boarding Pod latches.
 
 ---
 
@@ -451,8 +448,6 @@ and torpedo-boat corvettes.
 
 **Traits**
 - **Carrier doctrine:** squadrons cost less.
-- **Trained helms:** +1 extra turn click when using Evasive or Full Burn.
-- **Hangar repair:** see §8.
 - **Weakness:** thinner hulls than the other factions.
 
 **Ships**
