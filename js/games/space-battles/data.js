@@ -171,10 +171,10 @@ const pd = (weapon, shots) => ({ weapon, shots });
 export const SHIPS = {
   // ----- Human Protectorate -----
   strikeCarrier: {
-    name: 'Strike Carrier', short: 'Carrier', faction: 'protectorate', class: 'cruiser', cost: 18,
+    name: 'Fleet Carrier', short: 'Carrier', faction: 'protectorate', class: 'cruiser', cost: 18,
     ratings: { o: 4, d: 3, m: 3, u: 5 },
     desc: 'The fleet\'s centerpiece. Launches 3 squadrons and backs them up with long-range lasers.',
-    hull: 10, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
+    hull: 11, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
     weapons: ['largeLaser', 'largeLaser', 'smallLaser', 'smallLaser', 'ion'], pd: [pd('flak', 2)], squadrons: 3,
   },
   lancer: {

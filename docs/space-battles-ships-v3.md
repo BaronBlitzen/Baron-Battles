@@ -66,7 +66,7 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Torpedo Boat | Corvette | 8 | 5 | 2/1/1/0 | 2 | 2–5 | 3/3/3/2 | Torpedo, Small Laser ×2 | 0 | |
 | Escort | Destroyer | 11 | 8 | 2/2/2/1 | 3 | 1–4 | 3/2/1/1 | Ion Cannon, Small Laser ×3 | Flak ×3 | |
 | Lancer | Cruiser | 18 | 10 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Particle Lance, Large Laser ×2, Small Laser ×2 | Flak ×1 | |
-| Strike Carrier | Cruiser | 18 | 10 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Laser ×2, Small Laser ×2, Ion Cannon | Flak ×2 | Carrier (3 squadrons) |
+| Fleet Carrier | Cruiser | 18 | 11 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Laser ×2, Small Laser ×2, Ion Cannon | Flak ×2 | Carrier (3 squadrons) |
 
 ### Djn'zuar ✅
 
@@ -84,9 +84,9 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 - ✅ **Escort 11 vs Samurai 12:** the Escort is tougher and has the best PD but weak guns (only 3
   Power). The Samurai hits harder, is faster and has the auto-hit Disruptor.
 - **Lancer 18 = Brute 18:** about the same damage. The Lancer outranges, the Brute is tougher.
-- ✅ **Strike Carrier 18, Queen 16 (empty):** the Strike Carrier has much better guns, while the Queen
+- ✅ **Fleet Carrier 18, Queen 16 (empty):** the Fleet Carrier has much better guns, while the Queen
   has more hull and one more hangar. Squadrons are bought on top.
-- A full Strike Carrier (18 + 3 squadrons ≈ 28) or full Queen (16 + 4 Swarmers = 28) is a bit under
+- A full Fleet Carrier (18 + 3 squadrons ≈ 28) or full Queen (16 + 4 Swarmers = 28) is a bit under
   half of a 60-point fleet.
 - Costs were rebalanced with a value model (damage per round × how hard the ship is to kill). Squadrons
   score far above their cost; raise them if carriers dominate.
@@ -110,7 +110,7 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
   **Return**, can't shoot, and fly back to their carrier. Docking re-arms them; they may launch again
   the round after they dock. If their carrier is destroyed they can never re-arm.
 - ✅ **Swarmers are the only Djn'zuar squadron.** Gorers and Latchers are removed.
-- The Strike Carrier holds any mix of Fighters and Bombers. The Queen holds Swarmers.
+- The Fleet Carrier holds any mix of Fighters and Bombers. The Queen holds Swarmers.
 
 ### Squadron orders ✅
 
@@ -168,7 +168,7 @@ Hunter, Full Burn). ⚠ A ship can also pick no stance.
 | **Critical Repairs** | All | Repair **1 critical hit**. The player picks which. |
 | **Shield Boost** | All | Add **2 shields to one side**. That side can go up to **2 over its max**; anything over max disappears at the end of next round. |
 | **Targeted Attack** | All | All your weapons **+1 accuracy**, and they crit on **9–10**. |
-| **Command** | Carriers (Strike Carrier, Queen) | Your squadrons get **+1 accuracy** this round. |
+| **Command** | Carriers (Fleet Carrier, Queen) | Your squadrons get **+1 accuracy** this round. |
 | **Violent Turn** | Grunt only | Take **1 hull damage**. At the end of the move, you get as many extra clicks as it takes to make a full 90° turn. |
 | **Exterminate** | Lancer with Shrike Leonitas | Your Particle Lance fires **twice** this round (no extra Power). |
 | **Reckless Attack** | Grunt with Golbrik | Take **1 hull damage**. **All your weapons fire twice** this round (no extra Power). |
@@ -188,7 +188,7 @@ A captain is an upgrade bought for one ship (or one squadron) during fleet build
 | **Shuna, Dolphin Warrior** | Torpedo Boat | 2 | Every round you may use **Wild Maneuvers AND another stance** (their effects add up). |
 | **Samuel Verity** | Escort | 2 | End of every round: **regain 1 shield**: front if it isn't full; else the side with fewer shields (left on a tie); else the rear. Not while the Shield Generator is damaged. |
 | **Shrike Leonitas** | Lancer | 3 | Unlocks the **Exterminate** stance. |
-| **Amelia Dangerfield** | Strike Carrier | 2 | **Born Commander:** your squadrons always get Command's +1 accuracy (it doesn't stack with Command, so Command isn't offered), leaving you free to pick another stance. |
+| **Amelia Dangerfield** | Fleet Carrier | 2 | **Born Commander:** your squadrons always get Command's +1 accuracy (it doesn't stack with Command, so Command isn't offered), leaving you free to pick another stance. |
 | **Iceman Flaggs** | Fighters (squadron) | 1 | Squadron **+1 accuracy**, and the **first hit on it each round is ignored**. |
 | **Golbrik** | Grunt | 2 | Unlocks the **Reckless Attack** stance. |
 | **Jurddap** | Grunt | 1 | **Shrug It Off:** **+1 hull**, and **Hull Fire never hurts** this ship (it can still catch the critical; it just does no damage). |
