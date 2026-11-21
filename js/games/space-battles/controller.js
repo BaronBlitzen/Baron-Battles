@@ -64,6 +64,13 @@ export function mount({ container, me, sendInput }) {
   let lastPhase = null;
   let openShip = null; // fleet building: ship type whose details are expanded
   let confirmSurrender = false; // first Surrender tap asks "are you sure?"
+  // Roll Dice: the TV already rolled; this phone reveals its own rows one by one.
+  let rollKey = null;
+  let rollStage = 'ready'; // 'ready' (Fire! button) | 'rolling' | 'done'
+  let rollShown = 0; // rows already revealed
+  let rollTimer = 0;
+  let tumbleTimer = 0;
+  const ROW_MS = 750; // how long each weapon's dice tumble before they land
 
   const myId = () => meNow.id;
   const myShips = () => (state?.ships || []).filter((s) => s.owner === myId());
@@ -102,7 +109,7 @@ export function mount({ container, me, sendInput }) {
   function header() {
     const phaseName = {
       setup: 'Fleet Setup', intro: 'Battle stations', planMove: 'Plan Movement', move: 'Moving…',
-      planFire: 'Plan Fire', fire: 'Firing…', over: 'Battle over',
+      planFire: 'Plan Fire', roll: 'Roll dice', fire: 'Firing…', over: 'Battle over',
     }[state.phase];
     const round = state.phase === 'setup' ? '' : `Round ${Math.max(1, state.round)}/${FLEET.maxRounds} · `;
     const f = state.teams?.[myId()];
@@ -341,6 +348,100 @@ export function mount({ container, me, sendInput }) {
       </div>`;
   }
 
+  // ---------- Roll Dice ----------
+  const myRolls = () => (state.roll?.attacks || []).filter((r) => r.owner === myId());
+  const verdictOf = (r) => (r.dice.some((d) => d[1] === 'crit') ? 'crit' : r.dice.some((d) => d[1] === 'hit') ? 'hit' : 'miss');
+  const VERDICT = { hit: 'Hit!', miss: 'Miss!', crit: 'Crit!' };
+
+  function rollRow(r, i) {
+    const shown = i < rollShown;
+    const tumbling = !shown && i === rollShown && rollStage === 'rolling';
+    const kind = r.kind === 'pd' ? '🛡 Point-defense (automatic) · ' : r.kind === 'squad' ? '✈ ' : '';
+    const crit = r.critOn ? `<small> · crit ${r.critOn}${r.critOn < 10 ? '+' : ''}</small>` : '';
+    const dice = r.dice.map(([v, res]) => (shown
+      ? `<span class="sbp-die ${res}">${v}</span>`
+      : `<span class="sbp-die ${tumbling ? 'tumble' : 'blank'}">${tumbling ? 1 + Math.floor(Math.random() * 10) : ''}</span>`)).join('');
+    let verdict = '';
+    if (shown) {
+      const v = verdictOf(r);
+      const hits = r.dice.filter((d) => d[1] !== 'miss').length;
+      verdict = `<span class="sbp-verdict ${v}">${VERDICT[v]}${r.dice.length > 1 ? `<small>${hits} of ${r.dice.length} hit</small>` : ''}</span>`;
+    }
+    return `
+      <div class="sbp-drow ${shown || tumbling ? '' : 'wait'}" style="--dc:${r.color}">
+        <div class="sbp-drow-head">
+          <span><b>${escapeHtml(r.weapon)}</b><br><small>${kind}${escapeHtml(r.from)} → ${escapeHtml(r.to)}</small></span>
+          <span class="sbp-need">Need ${r.need}${r.need < 10 ? '+' : ''}${crit}</span>
+        </div>
+        <div class="sbp-dice">${dice}${verdict}</div>
+      </div>`;
+  }
+
+  function viewRoll() {
+    const rows = myRolls();
+    if (!rows.length) return viewWatch('Open fire!', 'None of your guns have a target this round. Watch the TV.');
+    const nDice = rows.reduce((n, r) => n + r.dice.length, 0);
+    let top;
+    if (rollStage === 'ready') {
+      top = `<h2>Ready to fire!</h2><p class="muted">${rows.length} weapon${rows.length > 1 ? 's' : ''} · ${nDice} d10${nDice > 1 ? 's' : ''}. Roll at least the number shown to hit. A 10 always hits.</p>
+        <div><button class="big-btn sbp-fire-btn" data-act="fire">🔥 Fire!</button></div>`;
+    } else if (rollStage === 'rolling') {
+      top = `<h2>Rolling…</h2><div><button class="big-btn ghost" data-act="skipRoll">Skip ⏩</button></div>`;
+    } else {
+      const all = rows.flatMap((r) => r.dice);
+      const hits = all.filter((d) => d[1] !== 'miss').length, crits = all.filter((d) => d[1] === 'crit').length;
+      const waiting = state.phase !== 'roll' ? [] : Object.keys(state.people || {}).filter((id) => id !== myId() && state.rolled && !state.rolled[id] && myRollsOf(id));
+      top = `<h2>${hits} hit${hits === 1 ? '' : 's'}${crits ? ` · <span style="color:#ffd43b">${crits} crit${crits > 1 ? 's' : ''}</span>` : ''}</h2>
+        <p class="muted">Watch the TV!${waiting.length ? ` Waiting for ${waiting.map((id) => escapeHtml(person(id).name)).join(', ')}…` : ''}</p>`;
+    }
+    return `
+      ${header()}
+      <div class="sbp-body sbp-roll">
+        <div class="sbp-roll-top">${top}</div>
+        ${rows.map(rollRow).join('')}
+      </div>`;
+  }
+  const myRollsOf = (id) => (state.roll?.attacks || []).some((r) => r.owner === id);
+
+  function stopRollTimers() {
+    clearTimeout(rollTimer);
+    clearInterval(tumbleTimer);
+    rollTimer = 0;
+    tumbleTimer = 0;
+  }
+
+  function startRolling() {
+    if (rollStage !== 'ready' || !myRolls().length) return;
+    rollStage = 'rolling';
+    rollShown = 0;
+    buzz(40);
+    tumbleTimer = setInterval(() => {
+      for (const d of root.querySelectorAll('.sbp-die.tumble')) d.textContent = 1 + Math.floor(Math.random() * 10);
+    }, 70);
+    const step = () => {
+      const r = myRolls()[rollShown];
+      rollShown++;
+      if (r) buzz(verdictOf(r) === 'crit' ? 120 : verdictOf(r) === 'hit' ? 40 : 0);
+      if (rollShown >= myRolls().length) finishRolling();
+      else { render(); showRollingRow(); rollTimer = setTimeout(step, ROW_MS); }
+    };
+    render();
+    rollTimer = setTimeout(step, ROW_MS);
+  }
+
+  // Keeps the row that's rolling on screen (long fleets have many rows).
+  function showRollingRow() {
+    root.querySelector('.sbp-die.tumble')?.closest('.sbp-drow')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  function finishRolling() {
+    stopRollTimers();
+    rollShown = myRolls().length;
+    rollStage = 'done';
+    sendInput({ type: 'rolled', round: state.round });
+    render();
+  }
+
   function viewSent() {
     return `
       ${header()}
@@ -554,7 +655,7 @@ export function mount({ container, me, sendInput }) {
     const pack = packBonus(s, units());
     const packNote = pack ? `<p class="sbp-burn">${faceImg('bossim', 22)} Bossim's Pack Leader: all weapons +${pack} accuracy.</p>` : '';
     const pd = shipDef(s).pd.length
-      ? '<p class="sbp-small muted">Point-defense is free and fires on its own (yellow on the TV) at the nearest enemy squadron in close range.</p>' : '';
+      ? '<p class="sbp-small muted">Point-defense is free and fires on its own at the nearest enemy squadron in close range. Its yellow dice show up when you tap Fire!</p>' : '';
     return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + packNote + amelia + pd;
   }
 
@@ -881,7 +982,7 @@ export function mount({ container, me, sendInput }) {
   }
 
   // ---------- Surrender ----------
-  const battleRunning = () => ['intro', 'planMove', 'move', 'planFire', 'fire'].includes(state.phase);
+  const battleRunning = () => ['intro', 'planMove', 'move', 'planFire', 'roll', 'fire'].includes(state.phase);
 
   function surrenderBar() {
     const myTeam = state.teams[myId()];
@@ -921,7 +1022,8 @@ export function mount({ container, me, sendInput }) {
     if (state.phase === 'setup') root.innerHTML = viewSetup();
     else if (state.phase === 'intro') root.innerHTML = viewWatch('Battle stations!', 'Find your ships on the TV.');
     else if (state.phase === 'move') root.innerHTML = viewWatch('Ships are moving', 'Watch the TV.');
-    else if (state.phase === 'fire') root.innerHTML = viewWatch('Open fire!', 'Watch the TV.');
+    else if (state.phase === 'fire') root.innerHTML = myRolls().length ? viewRoll() : viewWatch('Open fire!', 'Watch the TV.');
+    else if (state.phase === 'roll') root.innerHTML = viewRoll();
     else if (state.phase === 'over') root.innerHTML = viewOver();
     else if (!myLiving().length) root.innerHTML = viewWatch(myShips().length ? 'Your fleet is gone' : 'Spectating', 'Cheer on your team on the TV.');
     else if (isReady()) root.innerHTML = viewSent();
@@ -1086,6 +1188,8 @@ export function mount({ container, me, sendInput }) {
     else if (act === 'holdTarget') { if (holdDraft[selShip]) holdDraft[selShip].target = b.dataset.id; render(); }
     else if (act === 'repairCrit') { repairDraft[selShip] = { crit: Number(b.dataset.i) }; render(); }
     else if (act === 'send') send();
+    else if (act === 'fire') startRolling();
+    else if (act === 'skipRoll') finishRolling();
     else if (act === 'unready') sendInput({ type: state.phase, round: state.round, ready: false });
   });
 
@@ -1094,7 +1198,12 @@ export function mount({ container, me, sendInput }) {
     if (!state) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const planning = (state.phase === 'planMove' || state.phase === 'planFire') && myLiving().length && !isReady();
-    if (state.phase === 'setup') {
+    if (state.phase === 'roll') {
+      if (k !== 'Enter' && k !== ' ') return;
+      if (rollStage === 'ready') startRolling();
+      else if (rollStage === 'rolling') finishRolling();
+      else return;
+    } else if (state.phase === 'setup') {
       const i = ['1', '2', '3'].indexOf(k);
       if (i >= 0 && FACTIONS[FACTION_ORDER[i]].available) sendInput({ type: 'team', faction: FACTION_ORDER[i] });
       else if (k === 'b') {
@@ -1158,12 +1267,25 @@ export function mount({ container, me, sendInput }) {
       meNow = meLatest || meNow;
       if (state.secondsLeft !== null && state.secondsLeft !== undefined) deadline = performance.now() + state.secondsLeft * 1000;
       if ((state.phase === 'planMove' || state.phase === 'planFire') && draftKey !== state.phaseKey) resetDrafts();
-      if (state.phase !== lastPhase && (state.phase === 'planMove' || state.phase === 'planFire')) buzz(60);
+      if (state.phase === 'roll' && rollKey !== state.phaseKey) {
+        stopRollTimers();
+        rollKey = state.phaseKey;
+        // Already rolled (e.g. the page was reloaded): show the results straight away.
+        rollStage = state.rolled?.[myId()] ? 'done' : 'ready';
+        rollShown = rollStage === 'done' ? myRolls().length : 0;
+      } else if (state.phase !== 'roll' && rollStage !== 'done') {
+        // The TV moved on (everyone else rolled, or time ran out): show this phone's results.
+        stopRollTimers();
+        rollStage = 'done';
+        rollShown = myRolls().length;
+      }
+      if (state.phase !== lastPhase && (state.phase === 'planMove' || state.phase === 'planFire' || state.phase === 'roll')) buzz(60);
       lastPhase = state.phase;
       render();
     },
     destroy() {
       clearInterval(timer);
+      stopRollTimers();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onResize);
     },

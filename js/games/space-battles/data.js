@@ -284,7 +284,18 @@ export const TIMING = {
   moveMs: 3600,
   squadMoveMs: 1400, // squadrons move after ships (only when there are squadrons)
   fireMs: 4200,
+  rollSeconds: 30, // Roll Dice: the TV waits this long at most for everyone to tap Fire!
 };
+
+// Dice (phone Roll screen) and laser bolt (TV) color for each weapon, so a die and its shot on the
+// TV match. Point-defense is always yellow; squadrons use `squad`.
+export const DICE_COLORS = {
+  torpedo: '#ffa94d', smallLaser: '#ff8787', largeLaser: '#fa5252', ion: '#8ce1ff', lance: '#da77f2',
+  maw: '#ff922b', smallRail: '#74c0fc', largeRail: '#4dabf7', critDisruptor: '#e599f7', acid: '#a9e34b',
+  autocannon: '#dee2e6', breaching: '#ff6b6b', disruptor: '#ffe066', boarding: '#ff922b',
+  pd: '#ffd43b', squad: '#b197fc',
+};
+export const diceColor = (weapon, pd = false) => (pd ? DICE_COLORS.pd : DICE_COLORS[weapon] || DICE_COLORS.squad);
 
 
 // Fleet building (rules §1): each side gets `sidePoints`, split evenly (rounded down)

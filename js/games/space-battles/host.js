@@ -4,7 +4,7 @@
 import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, WEAPONS, SHIPS, SCENARIOS, TIMING, ZONES, MISSIONS, FLEET, STANCES,
-  CRITICALS, CRIT_POOL, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS, HIT, SPECIALS, BATTLE_SIZES, CAPTAINS,
+  CRITICALS, CRIT_POOL, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS, HIT, SPECIALS, BATTLE_SIZES, CAPTAINS, diceColor,
 } from './data.js';
 import {
   classOf, shipDef, simulateMove, sanitizeMovePlan, defaultMovePlan, sanitizeFirePlan,
@@ -25,9 +25,9 @@ const capFace = (id) => (CAPTAINS[id] ? ` ${faceImg(id, 26)} ${escapeHtml(CAPTAI
 
 const PHASE_NAMES = {
   setup: 'Fleet Setup', intro: 'Battle stations', planMove: 'Plan Movement', move: 'Move',
-  planFire: 'Plan Fire', fire: 'Fire', over: 'Battle over',
+  planFire: 'Plan Fire', roll: 'Roll dice', fire: 'Fire', over: 'Battle over',
 };
-const FIRE_LAND_MS = 1800; // when all fire damage lands (after the tracers)
+const FIRE_LAND_MS = 1900; // when all fire damage lands (after the tracers)
 
 const ACID_MS = 2900; // when end-of-round acid burns (after the fire damage)
 
@@ -182,6 +182,9 @@ export function start({ container, players, setPhoneState, onExit }) {
   let mines = []; // [{ id, x, y }] dropped by Mine Drop (neutral)
   let mineCount = 0;
   let anim = null;
+  let rollData = null; // Roll Dice phase: the attacks already rolled, waiting to be shown
+  let rolled = {}; // playerId -> true once their phone has shown its dice
+  let rollPublic = null; // the dice rows phones show (kept through the Fire animation)
   let result = null;
   let battleFactions = [];
 
@@ -282,7 +285,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   function secondsLeft() {
-    if (phase !== 'planMove' && phase !== 'planFire') return null;
+    if (phase !== 'planMove' && phase !== 'planFire' && phase !== 'roll') return null;
     return Math.max(0, Math.ceil((phaseEndsAt - now()) / 1000));
   }
 
@@ -310,6 +313,8 @@ export function start({ container, players, setPhoneState, onExit }) {
       ships: (phoneShips || ships).map(publicShip),
       squads: (phoneSquads || squads).map(publicSquad),
       kills: { ...kills },
+      roll: phase === 'roll' || phase === 'fire' ? rollPublic : null,
+      rolled: { ...rolled },
       result,
     });
   }
@@ -568,6 +573,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   function checkAllReady() {
+    if (phase === 'roll') { checkAllRolled(); return; }
     if (phase !== 'planMove' && phase !== 'planFire') return;
     const req = required();
     if (req.length && req.every((id) => ready[id])) endPlan();
@@ -575,7 +581,7 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   function endPlan() {
     if (phase === 'planMove') resolveMove();
-    else if (phase === 'planFire') resolveFire();
+    else if (phase === 'planFire') startRoll();
   }
 
   // ---------- Move ----------
@@ -682,14 +688,18 @@ export function start({ container, players, setPhoneState, onExit }) {
   const d10 = () => 1 + Math.floor(Math.random() * HIT.die);
 
   // Rolls `shots` d10s needing `need`+ (a 10 always hits). Each hit records whether it was a
-  // critical roll (`critOn`+, or never when `canCrit` is false). Returns { hits, crits: [bool per hit] }.
+  // critical roll (`critOn`+, or never when `canCrit` is false). Returns { hits, crits: [bool per hit],
+  // dice: [[roll, 'hit' | 'miss' | 'crit'] per shot] } (the dice are shown on the phones).
   function rollShots(shots, need, critOn, canCrit) {
-    const crits = [];
+    const crits = [], dice = [];
     for (let i = 0; i < shots; i++) {
       const r = d10();
-      if (r >= need || r === HIT.die) crits.push(canCrit && r >= critOn);
+      const hit = r >= need || r === HIT.die;
+      const crit = hit && canCrit && r >= critOn;
+      if (hit) crits.push(crit);
+      dice.push([r, crit ? 'crit' : hit ? 'hit' : 'miss']);
     }
-    return { hits: crits.length, crits };
+    return { hits: crits.length, crits, dice };
   }
 
   // One weapon's shots at one target (one "attack": all its hits add up). Every shot rolls a d10
@@ -699,9 +709,11 @@ export function start({ container, players, setPhoneState, onExit }) {
     const band = rangeBand(unitDistance(s, t));
     const sq = isSquad(t);
     const need = needToHit(s, wd, t, ships);
-    const r = rollShots(shots, need, critOnOf(s, wd), !sq && !wd.pd);
+    const canCrit = !sq && !wd.pd;
+    const critOn = critOnOf(s, wd);
+    const r = rollShots(shots, need, critOn, canCrit);
     return {
-      band, shots, need, hits: r.hits, crits: r.crits, perHit: wd.damage, ignoreShields: !!wd.ignoreShields,
+      band, shots, need, critOn: canCrit ? critOn : null, dice: r.dice, hits: r.hits, crits: r.crits, perHit: wd.damage, ignoreShields: !!wd.ignoreShields,
       effect: sq ? null : wd.effect || null, weapon: w.weapon,
     };
   }
@@ -714,8 +726,9 @@ export function start({ container, players, setPhoneState, onExit }) {
     const screen = !isSquad(t) && screened(t, ships);
     if (screen) shots = Math.max(0, shots - 1);
     const need = needToHit(q, null, t, ships);
-    const r = rollShots(shots, need, HIT.critOn, !isSquad(t) && !!def.crit);
-    return { band: 'close', shots, need, hits: r.hits, crits: r.crits, perHit: def.damage, ignoreShields: !!def.ignoreShields, effect: null, weapon: null, screen };
+    const canCrit = !isSquad(t) && !!def.crit;
+    const r = rollShots(shots, need, HIT.critOn, canCrit);
+    return { band: 'close', shots, need, critOn: canCrit ? HIT.critOn : null, dice: r.dice, hits: r.hits, crits: r.crits, perHit: def.damage, ignoreShields: !!def.ignoreShields, effect: null, weapon: null, screen };
   }
 
   // Damages one of `ship`'s systems, picked at random among those not damaged yet (a repeat is
@@ -740,7 +753,9 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   const critLabel = (c) => `${CRITICALS[c.id].name}${c.weapon ? ` (${WEAPONS[c.weapon].name})` : ''}`;
 
-  function resolveFire() {
+  // Plan Fire is over: every attack is rolled now (the TV stays the referee), then each phone shows
+  // its own dice in the Roll Dice phase. Nothing is damaged until resolveFire().
+  function startRoll() {
     // Kairos: ships turn in place first (their fire plans were checked with the new heading).
     const turned = [];
     for (const s of ships) {
@@ -749,10 +764,6 @@ export function start({ container, players, setPhoneState, onExit }) {
       s.heading = rotatedShip(s, rot).heading;
       turned.push([s.id, rot]);
     }
-    // All attacks land together on copies, so a ship destroyed now still fired.
-    const next = ships.map(clone);
-    const nextSquads = squads.map(cloneSquad);
-    const nextById = Object.fromEntries([...next, ...nextSquads].map((u) => [u.id, u]));
     const all = units();
     const attacks = [];
     for (const s of ships) {
@@ -765,10 +776,10 @@ export function start({ container, players, setPhoneState, onExit }) {
           const w = weapons[wi];
           const t = unitById(targetId);
           if (!w || !t) continue;
-          if (WEAPONS[w.weapon].once) nextById[s.id].used[weaponKey(a.arc, wi)] = true;
+          const onceKey = WEAPONS[w.weapon].once ? weaponKey(a.arc, wi) : null;
           // Exterminate / Reckless Attack: the weapon fires twice (two separate attacks).
           for (let n = weaponRepeats(s, w); n > 0; n--) {
-            attacks.push({ from: s.id, to: t.id, arc: a.arc, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w) });
+            attacks.push({ from: s.id, to: t.id, arc: a.arc, onceKey, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w) });
           }
         }
       }
@@ -784,6 +795,55 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (!t) continue;
       attacks.push({ from: q.id, to: t.id, zone: isSquad(t) ? null : zoneFacing(t, q.x, q.y), ...rollSquad(q, t) });
     }
+    for (const a of attacks) a.color = diceColor(a.weapon, a.pd);
+    // What the phones see: one row per weapon type, shooter and target (two Small Lasers on the same
+    // ship at the same target share a row). Each phone shows only its owner's rows.
+    const pub = [];
+    const rowByKey = {};
+    for (const a of attacks) {
+      if (!a.shots) continue;
+      const from = unitById(a.from), to = unitById(a.to);
+      const key = [a.from, a.to, a.weapon, a.pd, a.need, a.critOn].join('|');
+      if (rowByKey[key]) { rowByKey[key].dice.push(...a.dice); continue; }
+      pub.push(rowByKey[key] = {
+        owner: from.owner, from: unitName(from), to: unitName(to),
+        weapon: a.weapon ? WEAPONS[a.weapon].name : squadDef(from).weapon || 'Guns',
+        kind: a.pd ? 'pd' : isSquad(from) ? 'squad' : 'weapon', color: a.color,
+        need: Math.min(HIT.die, a.need), critOn: a.critOn, dice: [...a.dice],
+      });
+    }
+    rollData = { attacks, turned };
+    rollPublic = { round, attacks: pub };
+    rolled = {};
+    // Players with nothing to roll don't hold anyone up.
+    for (const id of order) if (!pub.some((r) => r.owner === id)) rolled[id] = true;
+    phase = 'roll';
+    phaseKey++;
+    phaseEndsAt = now() + TIMING.rollSeconds * 1000;
+    pushState();
+    checkAllRolled();
+  }
+
+  function rolledInput(id, msg) {
+    if (phase !== 'roll' || msg.round !== round || rolled[id]) return;
+    rolled[id] = true;
+    pushState();
+    checkAllRolled();
+  }
+
+  function checkAllRolled() {
+    if (phase !== 'roll') return;
+    if (required().every((id) => rolled[id])) resolveFire();
+  }
+
+  function resolveFire() {
+    const { attacks, turned } = rollData;
+    rollData = null;
+    // All attacks land together on copies, so a ship destroyed now still fired.
+    const next = ships.map(clone);
+    const nextSquads = squads.map(cloneSquad);
+    const nextById = Object.fromEntries([...next, ...nextSquads].map((u) => [u.id, u]));
+    for (const a of attacks) if (a.onceKey) nextById[a.from].used[a.onceKey] = true;
     const t0 = now();
     const landAt = t0 + FIRE_LAND_MS;
     const pending = [];
@@ -984,8 +1044,13 @@ export function start({ container, players, setPhoneState, onExit }) {
     ships = next;
     squads = nextSquads;
     checkHome(ships);
-    const gap = attacks.length ? Math.min(220, 1300 / attacks.length) : 0;
-    attacks.forEach((a, i) => { a.at = t0 + 200 + i * gap; });
+    // Each die becomes one bolt on the TV; an attack's bolts leave one after another.
+    const gap = attacks.length ? Math.min(220, 1000 / attacks.length) : 0;
+    attacks.forEach((a, i) => {
+      a.at = t0 + 200 + i * gap;
+      const step = Math.min(90, 300 / Math.max(1, a.dice.length));
+      a.bolts = a.dice.map(([, res], j) => ({ at: a.at + j * step, res, side: (j % 2 ? 1 : -1) * (0.9 + Math.random() * 0.8) }));
+    });
     anim = {
       kind: 'fire', start: t0, end: t0 + TIMING.fireMs + (acidKill ? 900 : endOfRound ? 500 : 0), attacks, pending, landAt, dying,
       dieAt: (acidKill ? acidAt : landAt) + 700, pulls, tags, boarded, boardAt: acidAt,
@@ -1017,7 +1082,7 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   // ---------- Surrender (rules §1) ----------
   // A team surrenders once every online teammate has tapped Surrender (taps can be taken back).
-  const battleRunning = () => ['intro', 'planMove', 'move', 'planFire', 'fire'].includes(phase);
+  const battleRunning = () => ['intro', 'planMove', 'move', 'planFire', 'roll', 'fire'].includes(phase);
 
   function surrenderInput(id, msg) {
     if (!battleRunning() || !battleFactions.includes(teams[id])) return;
@@ -1087,6 +1152,8 @@ export function start({ container, players, setPhoneState, onExit }) {
       startPlan('planMove');
     } else if ((phase === 'planMove' || phase === 'planFire') && t >= phaseEndsAt) {
       endPlan();
+    } else if (phase === 'roll' && t >= phaseEndsAt) {
+      resolveFire();
     } else if (phase === 'move' && t >= anim.end) {
       anim = null;
       phoneShips = null;
@@ -1117,9 +1184,10 @@ export function start({ container, players, setPhoneState, onExit }) {
     if (phase !== 'setup') {
       const teamsHtml = battleFactions.map((f) => `<span style="color:${FACTIONS[f].color}">${escapeHtml(FACTIONS[f].short)} ${hullLeft(f, phoneShips || ships)}</span>`).join(' <span class="muted">vs</span> ');
       let chips = '';
-      if (phase === 'planMove' || phase === 'planFire') {
+      if (phase === 'planMove' || phase === 'planFire' || phase === 'roll') {
+        const done = phase === 'roll' ? rolled : ready;
         chips = order.filter((id) => shipsOf(id).length).map((id) => {
-          const st = !online.has(id) ? 'off' : ready[id] ? 'ready' : '';
+          const st = !online.has(id) ? 'off' : done[id] ? 'ready' : '';
           return `<span class="sb-chip ${st}"><span class="dot" style="background:${colorOf(id)}"></span>${escapeHtml(nameOf(id))}${st === 'ready' ? ' ✔' : st === 'off' ? ' (offline)' : ''}</span>`;
         }).join('');
       }
@@ -1135,8 +1203,8 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   const PULL_MS = 600; // how long a Grapple pull takes on screen (starts when damage lands)
-  const TRACER_COLORS = { ion: '#8ce1ff', acid: '#a9e34b', disrupt: '#ffe066', crit: '#ff8787' }; // others: shooter's color
-  const PD_COLOR = '#ffd43b'; // point-defense tracers are always yellow
+  const BOLT_MS = 380; // how long one laser bolt takes to reach its target
+  const BOLT_TAIL = 0.9; // after arriving, the impact flash lasts this share of BOLT_MS
 
   function poseOf(s, t) {
     if (isSquad(s)) {
@@ -1505,34 +1573,89 @@ export function start({ container, players, setPhoneState, onExit }) {
       }
       for (const p of anim.pending) popup(p.shipId, p.at, p.shieldLost, p.hullLost, t, p.fromX, p.fromY);
     }
+    // Roll Dice: faint aim lines (who is shooting whom) while the players roll on their phones.
+    if (phase === 'roll' && rollData) {
+      const pulse = 0.35 + 0.2 * Math.sin(t / 250);
+      const seen = new Set();
+      for (const a of rollData.attacks) {
+        const key = `${a.from}>${a.to}>${a.color}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const from = unitById(a.from), to = unitById(a.to);
+        if (!from || !to) continue;
+        ctx.save();
+        ctx.globalAlpha = pulse;
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 8]);
+        ctx.lineDashOffset = -t / 40;
+        ctx.beginPath();
+        ctx.moveTo(from.x * S, from.y * S);
+        ctx.lineTo(to.x * S, to.y * S);
+        ctx.stroke();
+        ctx.restore();
+      }
+      label('🎲 Roll your dice! Tap Fire! on your phone', W / 2, Math.max(28, S * 1.4), '#ffe066', Math.max(20, S * 0.9));
+    }
     if (anim?.kind === 'fire') {
+      // One bolt per die, in the weapon's dice color. A hit stops on the target with a flash, a
+      // miss streaks past to one side, a crit is thicker with a big burst.
       for (const a of anim.attacks) {
         if (t < a.at) continue;
         const from = unitById(a.from), toShip = unitById(a.to);
         const to = poseOf(toShip, t);
-        const k = Math.min(1, (t - a.at) / 450);
-        const fade = t > anim.landAt + 300 ? Math.max(0, 1 - (t - anim.landAt - 300) / 500) : 1;
-        if (fade <= 0) continue;
-        const x1 = from.x * S, y1 = from.y * S;
-        const x2 = x1 + (to.x * S - x1) * k, y2 = y1 + (to.y * S - y1) * k;
-        const color = a.pd ? PD_COLOR : TRACER_COLORS[a.effect] || colorOf(from.owner);
-        ctx.save();
-        ctx.globalAlpha = fade;
-        ctx.strokeStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 10;
-        ctx.lineWidth = a.pd || isSquad(from) ? 1.5 : 2.5;
-        ctx.setLineDash(a.hits ? [] : [6, 6]);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(x2, y2, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        const small = a.pd || isSquad(from);
+        for (const b of a.bolts) {
+          const u = (t - b.at) / BOLT_MS;
+          if (u < 0 || u > 1 + BOLT_TAIL) continue;
+          const x1 = from.x * S, y1 = from.y * S;
+          let x2 = to.x * S, y2 = to.y * S;
+          if (b.res === 'miss') {
+            // Aim beside the target and keep going past it.
+            const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+            x2 += (-dy / len) * b.side * S + (dx / len) * 2.5 * S;
+            y2 += (dx / len) * b.side * S + (dy / len) * 2.5 * S;
+          }
+          const head = Math.min(1, u), tail = Math.max(0, head - 0.35);
+          const fade = u > 1 ? 1 - (u - 1) / BOLT_TAIL : 1;
+          const lx = (k) => x1 + (x2 - x1) * k, ly = (k) => y1 + (y2 - y1) * k;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, fade) * (b.res === 'miss' ? 0.75 : 1);
+          ctx.strokeStyle = a.color;
+          ctx.shadowColor = a.color;
+          ctx.shadowBlur = b.res === 'crit' ? 18 : 10;
+          ctx.lineCap = 'round';
+          ctx.lineWidth = b.res === 'crit' ? 5 : small ? 1.8 : 3;
+          ctx.beginPath();
+          ctx.moveTo(lx(tail), ly(tail));
+          ctx.lineTo(lx(head), ly(head));
+          ctx.stroke();
+          if (b.res === 'crit') {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+          ctx.restore();
+          // Impact.
+          if (u >= 1 && b.res !== 'miss') {
+            const k = Math.min(1, (u - 1) / BOLT_TAIL);
+            const r = (b.res === 'crit' ? 0.5 + k * 1.6 : 0.2 + k * 0.6) * S * (small ? 0.6 : 1);
+            ctx.save();
+            ctx.globalAlpha = 1 - k;
+            ctx.fillStyle = b.res === 'crit' ? '#fff3bf' : a.color;
+            ctx.beginPath();
+            ctx.arc(x2, y2, r, 0, Math.PI * 2);
+            ctx.fill();
+            if (b.res === 'crit') {
+              ctx.strokeStyle = '#ffd43b';
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.arc(x2, y2, r * 1.4, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+        }
       }
       for (const p of anim.popups) popup(p.shipId, p.at, p.shieldLost, p.hullLost, t);
       // Effect labels (GRAPPLED, DISRUPTED, ACID, "−1 acid"), stacked under the ship.
@@ -1585,6 +1708,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (!people[id] || !msg || typeof msg.type !== 'string') return;
       if (phase === 'setup') setupInput(id, msg);
       else if (msg.type === 'planMove' || msg.type === 'planFire') planInput(id, msg);
+      else if (msg.type === 'rolled') rolledInput(id, msg);
       else if (msg.type === 'surrender') surrenderInput(id, msg);
     },
     setOnline(ids) {

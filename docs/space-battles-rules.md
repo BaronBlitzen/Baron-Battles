@@ -161,7 +161,8 @@ as every player who still has ships (and is online) taps **Ready**.
 | **1. Plan: Stance + Movement** | For each ship: pick a **stance**, set **speed** and **turns** (ghost path preview on the mini-map). For each carrier: give **each squadron an order** (launch, return) | Map, timer, ✔ next to each ready player |
 | **2. Move** | Watch | **Stance icons appear** over every ship. Ships move at the same time, then squadrons move |
 | **3. Plan: Fire** | For each ship: pick up to 2 arcs, and a target **for each weapon** in those arcs. Once-per-game weapons are held unless the player fires them | Map |
-| **4. Fire** | Watch | All attacks (ships, squadrons, point-defense) fire together. Damage numbers pop up. Wrecks are removed after everything lands |
+| **4. Roll dice** ✅ | Tap **Fire!** to reveal your dice: one row per weapon (plus your point-defense and squadrons), d10s in the weapon's color, "Need X+" on top, then **Hit! / Miss! / Crit!**. The TV rolled them already (it stays the referee); the phone only shows them. The TV waits until everyone has rolled, at most 30 s | Dice |
+| **4b. Fire** | Watch | All attacks fire together, one bolt per die: hits stop on the target, misses streak past, crits are thick with a big burst. Damage numbers pop up. Wrecks are removed after everything lands |
 | **5. End of round** | Watch | Damage Control repairs, critical effects (Bridge Fire, Acid), Boarding Pod latches, objective scoring, round counter |
 
 **If a player isn't ready when the timer ends:**

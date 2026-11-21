@@ -122,6 +122,8 @@ Same rules as v2: free, automatic, Close range, 360°, aims at the nearest enemy
 4+ ignoring squadron agility, 1 damage per hit, can't hurt ships, stances don't change it.
 
 - ✅ **PD tracers are drawn in yellow** during the fire phase so players can see what PD is shooting.
+- ✅ **PD is shown on the Roll Dice screen** as its own yellow row ("🛡 Point-defense (automatic)"), so
+  players see it roll and hit. Kept instead of removing PD and weakening squadrons.
 - PD shots per ship are in the ship tables above.
 
 ## Critical hits ✅
