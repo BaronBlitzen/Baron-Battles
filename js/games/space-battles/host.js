@@ -709,7 +709,8 @@ export function start({ container, players, setPhoneState, onExit }) {
     const band = rangeBand(unitDistance(s, t));
     const sq = isSquad(t);
     const need = needToHit(s, wd, t, ships);
-    const canCrit = !sq && !wd.pd;
+    // Auto-hit weapons (Disruptor) don't roll crits: every hit already causes a critical.
+    const canCrit = !sq && !wd.pd && !wd.autoHit;
     const critOn = critOnOf(s, wd);
     const r = rollShots(shots, need, critOn, canCrit);
     return {

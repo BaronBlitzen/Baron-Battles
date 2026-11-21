@@ -49,7 +49,7 @@ shields first then hull, shields don't recharge on their own). Pirates are not c
 | Plasma Maw | 2 | Close | Battery | 3 | |
 | Small Railgun Battery | 1 | Medium | Battery | 1 | |
 | Large Railgun Battery | 2 | Medium | Battery | 3 | |
-| Disruptor | **2** | Close | Turret 360° | — | A hit does no damage but causes **1 critical hit**. |
+| Disruptor | **2** | Close | Turret 360° | — | ✅ **Always hits (no roll).** Does no damage but causes **1 critical hit**. |
 | Acid Spitter | 1 | Close | Battery | 1 | Acid: **1 more damage next round**, ignoring shields ✅. |
 
 ## Ships
@@ -64,9 +64,9 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Ship | Class | Cost | Hull | Shields | ⚡ | Speed | Clicks | Weapons | PD | Special |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Torpedo Boat | Corvette | 8 | 5 | 2/1/1/0 | 2 | 2–5 | 3/3/3/2 | Torpedo, Small Laser ×2 | 0 | |
-| Escort | Destroyer | 12 | 8 | 2/2/2/1 | 3 | 1–4 | 3/2/1/1 | Ion Cannon, Small Laser ×3 | Flak ×3 | |
+| Escort | Destroyer | 11 | 8 | 2/2/2/1 | 3 | 1–4 | 3/2/1/1 | Ion Cannon, Small Laser ×3 | Flak ×3 | |
 | Lancer | Cruiser | 18 | 10 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Particle Lance, Large Laser ×2, Small Laser ×2 | Flak ×1 | |
-| Strike Carrier | Cruiser | 22 | 10 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Laser ×2, Small Laser ×2, Ion Cannon | Flak ×2 | Carrier (3 squadrons) |
+| Strike Carrier | Cruiser | 18 | 10 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Laser ×2, Small Laser ×2, Ion Cannon | Flak ×2 | Carrier (3 squadrons) |
 
 ### Djn'zuar ✅
 
@@ -75,19 +75,21 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Grunt | Corvette | 7 | 5 | 1/1/1/0 | 2 | 2–5 | 2/1/1/1 | Plasma Maw, Small Railgun ×2 | 0 | Violent Turn stance |
 | Samurai | Destroyer | 12 | 7 | 1/1/1/0 | 3 | 2–5 | 3/3/2/2 | Disruptor, Large Railgun, Small Railgun ×2 | 0 | |
 | Brute | Cruiser | 18 | 11 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Railgun ×3, Acid Spitter ×2, Small Railgun ×2 | Thorn ×2 | |
-| Queen | Battleship | 22 | 14 | 3/3/3/2 | 4 | 1–3 | 3/2/1 | Large Railgun, Small Railgun ×4 | Thorn ×3 | Carrier (4 squadrons) |
+| Queen | Battleship | 16 | 14 | 3/3/3/2 | 4 | 1–3 | 3/2/1 | Large Railgun, Small Railgun ×4 | Thorn ×3 | Carrier (4 squadrons) |
 
 ### Why these costs
 
 - **Torpedo Boat 8 vs Grunt 7:** the Torpedo Boat's torpedo can kill a Grunt in one hit, and it turns
   better. The Grunt is a bit cheaper so the Djn'zuar can field more of them.
-- **Escort 12 = Samurai 12:** the Escort is tougher and has the best PD. The Samurai hits harder,
-  is faster and has the Disruptor.
+- ✅ **Escort 11 vs Samurai 12:** the Escort is tougher and has the best PD but weak guns (only 3
+  Power). The Samurai hits harder, is faster and has the auto-hit Disruptor.
 - **Lancer 18 = Brute 18:** about the same damage. The Lancer outranges, the Brute is tougher.
-- **Carriers 22 (empty):** the Strike Carrier has much better guns, while the Queen has more hull and one
-  more hangar. Squadrons are bought on top.
-- A full Strike Carrier (22 + 3 squadrons ≈ 32) or full Queen (22 + 4 Swarmers = 34) is a bit more
-  than half of a 60-point fleet.
+- ✅ **Strike Carrier 18, Queen 16 (empty):** the Strike Carrier has much better guns, while the Queen
+  has more hull and one more hangar. Squadrons are bought on top.
+- A full Strike Carrier (18 + 3 squadrons ≈ 28) or full Queen (16 + 4 Swarmers = 28) is a bit under
+  half of a 60-point fleet.
+- Costs were rebalanced with a value model (damage per round × how hard the ship is to kill). Squadrons
+  score far above their cost; raise them if carriers dominate.
 
 ## Squadrons ✅
 
@@ -100,7 +102,7 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Squadron | Faction | Cost | Craft | Hull / Shield each | Speed | Weapon | Reach | Damage | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | Fighters | Protectorate | 3 | 4 | 1 / 1 | **16 u** | Laser Cannon | Close | 1 | |
-| Bombers | Protectorate | 4 | 3 | 1 / 1 | **12 u** | Nuclear Bomb | Close | 2 | **Ignores shields.** |
+| Bombers | Protectorate | 4 | 3 | 1 / 1 | **12 u** | Nuclear Bomb | Close | 2 | **Ignores shields.** ✅ **Ships only:** can't attack squadrons (no Intercept, no squadron targets). |
 | Swarmers | Djn'zuar | 3 | **6** | 1 / 0 | **16 u** | Bite Cannon | Close | 1 | **−1 accuracy.** |
 
 - Bombers cost the most: about 4 hull damage a round against a big ship, and shields don't stop it.
@@ -175,17 +177,17 @@ A captain is an upgrade bought for one ship (or one squadron) during fleet build
 | Captain | Goes on | Cost | Ability |
 |---|---|---|---|
 | **Shuna, Dolphin Warrior** | Torpedo Boat | 2 | Every round you may use **Wild Maneuvers AND another stance** (their effects add up). |
-| **Samuel Verity** | Escort | 3 | End of every round: **regain 1 shield**: front if it isn't full; else the side with fewer shields (left on a tie); else the rear. Not while the Shield Generator is damaged. |
+| **Samuel Verity** | Escort | 2 | End of every round: **regain 1 shield**: front if it isn't full; else the side with fewer shields (left on a tie); else the rear. Not while the Shield Generator is damaged. |
 | **Shrike Leonitas** | Lancer | 3 | Unlocks the **Exterminate** stance. |
-| **Amelia Dangerfield** | Strike Carrier | 3 | **Born Commander:** your squadrons always get Command's +1 accuracy (it doesn't stack with Command, so Command isn't offered), leaving you free to pick another stance. |
-| **Iceman Flaggs** | Fighters (squadron) | 2 | Squadron **+1 accuracy**, and the **first hit on it each round is ignored**. |
+| **Amelia Dangerfield** | Strike Carrier | 2 | **Born Commander:** your squadrons always get Command's +1 accuracy (it doesn't stack with Command, so Command isn't offered), leaving you free to pick another stance. |
+| **Iceman Flaggs** | Fighters (squadron) | 1 | Squadron **+1 accuracy**, and the **first hit on it each round is ignored**. |
 | **Golbrik** | Grunt | 2 | Unlocks the **Reckless Attack** stance. |
 | **Jurddap** | Grunt | 1 | **Shrug It Off:** **+1 hull**, and **Hull Fire never hurts** this ship (it can still catch the critical; it just does no damage). |
-| **Bossim** | Grunt | 3 | **Pack Leader:** your side's **other Grunts** within **medium range** (8 u) of this ship get **+1 accuracy**. Several Bossims don't stack. |
-| **Seir-Seir** | Samurai | 2 | When this ship causes a critical, **you choose which system** it damages (picked in Plan Fire each round; if the target already has that one damaged, it's random). |
-| **King Tulbrik** | Brute | 2 | **+2 hull.** |
-| **Queen Uen** | Queen | 3 | **+1 max speed** and **+1 turn click** per segment. |
-| **Kairos** | Torpedo Boat | 2 | In **Plan Fire**, may **rotate the ship 1 click (15°) left or right** before shooting (to line up the torpedo or turn a stronger shield toward the enemy). The rotation happens just before all attacks, so it also changes which shield gets hit. Not while the Maneuvering Thrusters are damaged. |
+| **Bossim** | Grunt | 2 | **Pack Leader:** your side's **other Grunts** within **medium range** (8 u) of this ship get **+1 accuracy**. Several Bossims don't stack. |
+| **Seir-Seir** | Samurai | 1 | When this ship causes a critical, **you choose which system** it damages (picked in Plan Fire each round; if the target already has that one damaged, it's random). |
+| **King Tulbrik** | Brute | 1 | **+2 hull.** |
+| **Queen Uen** | Queen | 2 | **+1 max speed** and **+1 turn click** per segment. |
+| **Kairos** | Torpedo Boat | 1 | In **Plan Fire**, may **rotate the ship 1 click (15°) left or right** before shooting (to line up the torpedo or turn a stronger shield toward the enemy). The rotation happens just before all attacks, so it also changes which shield gets hit. Not while the Maneuvering Thrusters are damaged. |
 
 "Fires twice" = the weapon makes two separate attacks at the same target. Once-per-game weapons
 and point-defense never fire twice.

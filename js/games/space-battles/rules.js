@@ -217,7 +217,9 @@ export function accuracyOf(attacker, ships = []) {
   return (stanceOf(attacker).accuracy || 0) + packBonus(attacker, ships);
 }
 
+// The d10 roll needed to hit (1 = can't miss: auto-hit weapons like the Djnzuar Disruptor).
 export function needToHit(attacker, wd, target, ships = []) {
+  if (wd?.autoHit) return 1;
   if (wd?.pd && isSquad(target)) return HIT.base;
   return Math.max(2, HIT.base + agilityOf(target) - accuracyOf(attacker, ships));
 }
@@ -261,8 +263,9 @@ export const wingOf = (carrierId, squads) => squads.filter((q) => q.alive && q.c
 // A squadron that is out in space (alive and launched). Docked squadrons can't shoot or be shot.
 export const inSpace = (u) => u.alive && !u.docked;
 
-// Every squadron may get every order (kept as a hook for special squadron types).
-export const squadOrderAllowed = (type, order) => !!SQUADRONS[type] && !!SQUAD_ORDERS[order];
+// Every squadron may get every order, except that ships-only squadrons (Bombers) can't Intercept.
+export const squadOrderAllowed = (type, order) => !!SQUADRONS[type] && !!SQUAD_ORDERS[order]
+  && !(order === 'intercept' && SQUADRONS[type].shipsOnly);
 
 // One squadron's order from the phone: { order, target? } (see SQUAD_ORDERS). "Stay docked" only
 // for docked squadrons, Return only for launched ones; Attack needs a living enemy ship or a
@@ -275,6 +278,7 @@ export function sanitizeSquadOrder(q, o, units) {
   if (def.needsTarget) {
     const t = units.find((x) => x.id === o.target);
     if (!t || !inSpace(t) || !isEnemy(q, t)) return null;
+    if (isSquad(t) && squadDef(q).shipsOnly) return null;
     out.target = t.id;
   }
   return out;
@@ -347,7 +351,8 @@ export function planSquadMoves(squads, ships, map) {
       if (carrier?.alive) goal = { x: carrier.x, y: carrier.y, ship: carrier };
       else goal = { x: q.x, y: q.y };
     }
-    if (order === 'attack') {
+    if (order === 'intercept' && def.shipsOnly) order = 'escort';
+    if (order === 'attack' && !def.shipsOnly) {
       // A squadron target: fly at it like Intercept (if it's gone, the nearest enemy squadron).
       const tq = enemySquads.find((x) => x.id === o.target);
       const wasSquad = !tq && squads.some((x) => x.id === o.target);
@@ -411,13 +416,14 @@ export function planSquadMoves(squads, ships, map) {
 
 // What a squadron shoots this round (close range only, asteroids never block). Attack: its target
 // if it's in range. Intercept: the nearest enemy squadron in range. Otherwise (or if that's not
-// possible) by role: fighters the nearest enemy squadron, else the nearest enemy ship; bombers the
-// reverse. Docked squadrons neither shoot nor get shot. Returns the target unit or null.
+// possible) by role: fighters the nearest enemy squadron, else the nearest enemy ship; bombers only
+// ever shoot ships. Docked squadrons neither shoot nor get shot. Returns the target unit or null.
 // `units` = ships + squadrons.
 export function squadAttackTarget(q, units) {
   if (!inSpace(q)) return null;
   const def = squadDef(q);
-  const inRange = units.filter((u) => inSpace(u) && isEnemy(q, u) && rangeBand(unitDistance(q, u)) === 'close');
+  const inRange = units.filter((u) => inSpace(u) && isEnemy(q, u) && rangeBand(unitDistance(q, u)) === 'close'
+    && !(def.shipsOnly && isSquad(u)));
   const o = q.order || {};
   if (o.order === 'attack') {
     const t = inRange.find((u) => u.id === o.target);

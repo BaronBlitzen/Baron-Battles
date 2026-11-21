@@ -82,7 +82,8 @@ export const ARC_DEFS = {
 //     'board'    target automatically takes 1 critical
 //     'crit'     no damage; each hit causes 1 critical hit (Djnzuar Disruptor)
 //   noSquadrons      – can't target squadrons
-//   pd               – point-defense: free, fires on its own at the nearest enemy squadron in close
+//   autoHit          – always hits, no to-hit roll (Djnzuar Disruptor)
+//   pd             – point-defense: free, fires on its own at the nearest enemy squadron in close
 //                      range and ignores squadron agility; never aimed by the player. Its number
 //                      of shots is set per ship.
 export const WEAPONS = {
@@ -106,8 +107,8 @@ export const WEAPONS = {
     desc: 'Light railguns.' },
   largeRail: { name: 'Large Railgun Battery', arc: 'battery', reach: 'medium', power: 2, damage: 3, shots: 1,
     desc: 'Heavy railguns.' },
-  critDisruptor: { name: 'Disruptor', arc: 'turret', reach: 'close', power: 2, damage: 0, shots: 1, effect: 'crit', noSquadrons: true,
-    desc: 'Fires in any direction. A hit does no damage but causes a critical hit.' },
+  critDisruptor: { name: 'Disruptor', arc: 'turret', reach: 'close', power: 2, damage: 0, shots: 1, effect: 'crit', noSquadrons: true, autoHit: true,
+    desc: 'Fires in any direction. Always hits (no roll). Does no damage but causes a critical hit.' },
   acid: { name: 'Acid Spitter', arc: 'battery', reach: 'close', power: 1, damage: 1, shots: 1, effect: 'acid',
     desc: 'A hit burns 1 more hull at the end of the next round, ignoring shields.' },
   thorn: { name: 'Thorn Burst', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
@@ -170,7 +171,7 @@ const pd = (weapon, shots) => ({ weapon, shots });
 export const SHIPS = {
   // ----- Human Protectorate -----
   strikeCarrier: {
-    name: 'Strike Carrier', short: 'Carrier', faction: 'protectorate', class: 'cruiser', cost: 22,
+    name: 'Strike Carrier', short: 'Carrier', faction: 'protectorate', class: 'cruiser', cost: 18,
     ratings: { o: 4, d: 3, m: 3, u: 5 },
     desc: 'The fleet\'s centerpiece. Launches 3 squadrons and backs them up with long-range lasers.',
     hull: 10, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
@@ -184,7 +185,7 @@ export const SHIPS = {
     weapons: ['lance', 'largeLaser', 'largeLaser', 'smallLaser', 'smallLaser'], pd: [pd('flak', 1)],
   },
   escort: {
-    name: 'Escort', short: 'Escort', faction: 'protectorate', class: 'destroyer', cost: 12,
+    name: 'Escort', short: 'Escort', faction: 'protectorate', class: 'destroyer', cost: 11,
     ratings: { o: 2, d: 3, m: 3 },
     desc: 'A sturdy all-rounder with the heaviest flak in the fleet.',
     hull: 8, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 3,
@@ -200,7 +201,7 @@ export const SHIPS = {
 
   // ----- Djnzuar -----
   queen: {
-    name: 'Queen', short: 'Queen', faction: 'djnzuar', class: 'battleship', cost: 22,
+    name: 'Queen', short: 'Queen', faction: 'djnzuar', class: 'battleship', cost: 16,
     ratings: { o: 2, d: 5, m: 2, u: 5 },
     desc: 'A huge mother ship that turns surprisingly well. Its brood of 4 Swarmer squadrons does the fighting.',
     hull: 14, shields: { front: 3, left: 3, right: 3, rear: 2 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 4,
@@ -394,27 +395,27 @@ export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targ
 export const CAPTAINS = {
   shuna: { name: 'Shuna, Dolphin Warrior', short: 'Shuna', icon: '🐬', cost: 2, ships: ['torpedoBoat'], freeWild: true,
     desc: 'Every round you may use Wild Maneuvers AND another stance.' },
-  verity: { name: 'Samuel Verity', short: 'Verity', icon: '🛡', cost: 3, ships: ['escort'], shieldRegen: 1,
+  verity: { name: 'Samuel Verity', short: 'Verity', icon: '🛡', cost: 2, ships: ['escort'], shieldRegen: 1,
     desc: 'End of every round: regain 1 shield (front first; if it\'s full, the emptier side; if both sides are full, the rear). Not while the Shield Generator is damaged.' },
   shrike: { name: 'Shrike Leonitas', short: 'Shrike', icon: '☠', cost: 3, ships: ['lancer'], stance: 'exterminate',
     desc: 'Unlocks the Exterminate stance: your Particle Lance fires twice that round (no extra Power).' },
-  amelia: { name: 'Amelia Dangerfield', short: 'Amelia', icon: '📡', cost: 3, ships: ['strikeCarrier'], alwaysCommand: true,
+  amelia: { name: 'Amelia Dangerfield', short: 'Amelia', icon: '📡', cost: 2, ships: ['strikeCarrier'], alwaysCommand: true,
     desc: 'Born Commander: your squadrons always get +1 accuracy (as if you used Command), so you\'re free to pick another stance.' },
-  flaggs: { name: 'Iceman Flaggs', short: 'Iceman', icon: '🧊', cost: 2, squadrons: ['fighters'], accuracy: 1, ignoreFirstHit: true,
+  flaggs: { name: 'Iceman Flaggs', short: 'Iceman', icon: '🧊', cost: 1, squadrons: ['fighters'], accuracy: 1, ignoreFirstHit: true,
     desc: 'This Fighter squadron gets +1 accuracy, and the first hit on it each round is ignored.' },
   golbrik: { name: 'Golbrik', short: 'Golbrik', icon: '💥', cost: 2, ships: ['grunt'], stance: 'reckless',
     desc: 'Unlocks the Reckless Attack stance: take 1 hull damage, and all your weapons fire twice that round (no extra Power).' },
   jurddap: { name: 'Jurddap', short: 'Jurddap', icon: '🐸', cost: 1, ships: ['grunt'], hull: 1, fireproof: true,
     desc: 'Shrug It Off: +1 hull, and Hull Fire never hurts this ship.' },
-  bossim: { name: 'Bossim', short: 'Bossim', icon: '🪖', cost: 3, ships: ['grunt'], packLeader: { types: ['grunt'], accuracy: 1, range: 'medium' },
+  bossim: { name: 'Bossim', short: 'Bossim', icon: '🪖', cost: 2, ships: ['grunt'], packLeader: { types: ['grunt'], accuracy: 1, range: 'medium' },
     desc: 'Pack Leader: your side\'s other Grunts within medium range of this ship get +1 accuracy.' },
-  seirSeir: { name: 'Seir-Seir', short: 'Seir-Seir', icon: '🗡', cost: 2, ships: ['samurai'], pickCrit: true,
+  seirSeir: { name: 'Seir-Seir', short: 'Seir-Seir', icon: '🗡', cost: 1, ships: ['samurai'], pickCrit: true,
     desc: 'When this ship causes a critical hit, you choose which system it damages (pick it in Plan Fire).' },
-  tulbrik: { name: 'King Tulbrik', short: 'Tulbrik', icon: '👑', cost: 2, ships: ['brute'], hull: 2,
+  tulbrik: { name: 'King Tulbrik', short: 'Tulbrik', icon: '👑', cost: 1, ships: ['brute'], hull: 2,
     desc: '+2 hull.' },
-  uen: { name: 'Queen Uen', short: 'Uen', icon: '👸', cost: 3, ships: ['queen'], speed: 1, clicks: 1,
+  uen: { name: 'Queen Uen', short: 'Uen', icon: '👸', cost: 2, ships: ['queen'], speed: 1, clicks: 1,
     desc: '+1 max speed and +1 turn click per segment.' },
-  kairos: { name: 'Kairos', short: 'Kairos', icon: '⏳', cost: 2, ships: ['torpedoBoat'], fireRotate: 1,
+  kairos: { name: 'Kairos', short: 'Kairos', icon: '⏳', cost: 1, ships: ['torpedoBoat'], fireRotate: 1,
     desc: 'In Plan Fire you may rotate your ship 1 click (15°) left or right before shooting, to line up the torpedo or turn a stronger shield toward the enemy. Not while the Maneuvering Thrusters are damaged.' },
 };
 export const CAPTAIN_ORDER = Object.keys(CAPTAINS);
@@ -438,15 +439,16 @@ export const CRIT_POOL = ['hull', 'weapons', 'thrusters', 'shieldGen', 'engines'
 // Bought in fleet building to fill a carrier (`SHIPS[type].squadrons` slots). `role` decides
 // what it shoots when it has no order to follow:
 //   fighter  – the nearest enemy squadron in close range, else the nearest enemy ship
-//   bomber   – the nearest enemy ship in close range, else the nearest enemy squadron
-// Optional: `accuracy` (−1 = needs 1 higher), `ignoreShields`, `crit` (its 10s against ships crit).
+//   bomber   – the nearest enemy ship in close range (never squadrons)
+// Optional: `accuracy` (−1 = needs 1 higher), `ignoreShields`, `crit` (its 10s against ships crit),
+// `shipsOnly` (can't attack squadrons: no Intercept order, no squadron targets).
 export const SQUADRONS = {
   fighters: { name: 'Fighters', short: 'Fighters', faction: 'protectorate', role: 'fighter', cost: 3, craft: 4, shield: 1, speed: 16,
     weapon: 'Laser Cannon', damage: 1, crit: false,
     desc: 'Fast fighters. Hunt enemy squadrons first.' },
   bombers: { name: 'Bombers', short: 'Bombers', faction: 'protectorate', role: 'bomber', cost: 4, craft: 3, shield: 1, speed: 12,
-    weapon: 'Nuclear Bomb', damage: 2, ignoreShields: true, crit: true,
-    desc: 'Nuclear bombs ignore shields. Go after ships first.' },
+    weapon: 'Nuclear Bomb', damage: 2, ignoreShields: true, crit: true, shipsOnly: true,
+    desc: 'Nuclear bombs ignore shields. Can only attack ships, never squadrons.' },
   swarmers: { name: 'Swarmers', short: 'Swarmers', faction: 'djnzuar', role: 'fighter', cost: 3, craft: 6, shield: 0, speed: 16,
     weapon: 'Bite Cannon', damage: 1, accuracy: -1, crit: false,
     desc: 'A big, fast swarm with no shields. Hunts enemy squadrons first.' },

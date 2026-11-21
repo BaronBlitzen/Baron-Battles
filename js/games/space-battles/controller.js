@@ -358,8 +358,9 @@ export function mount({ container, me, sendInput }) {
     const tumbling = !shown && i === rollShown && rollStage === 'rolling';
     const kind = r.kind === 'pd' ? '🛡 Point-defense (automatic) · ' : r.kind === 'squad' ? '✈ ' : '';
     const crit = r.critOn ? `<small> · crit ${r.critOn}${r.critOn < 10 ? '+' : ''}</small>` : '';
+    const auto = r.need <= 1; // auto-hit weapon (Disruptor): no roll needed
     const dice = r.dice.map(([v, res]) => (shown
-      ? `<span class="sbp-die ${res}">${v}</span>`
+      ? `<span class="sbp-die ${res}">${auto ? '✓' : v}</span>`
       : `<span class="sbp-die ${tumbling ? 'tumble' : 'blank'}">${tumbling ? 1 + Math.floor(Math.random() * 10) : ''}</span>`)).join('');
     let verdict = '';
     if (shown) {
@@ -371,7 +372,7 @@ export function mount({ container, me, sendInput }) {
       <div class="sbp-drow ${shown || tumbling ? '' : 'wait'}" style="--dc:${r.color}">
         <div class="sbp-drow-head">
           <span><b>${escapeHtml(r.weapon)}</b><br><small>${kind}${escapeHtml(r.from)} → ${escapeHtml(r.to)}</small></span>
-          <span class="sbp-need">Need ${r.need}${r.need < 10 ? '+' : ''}${crit}</span>
+          <span class="sbp-need">${auto ? 'Auto-hit' : `Need ${r.need}${r.need < 10 ? '+' : ''}${crit}`}</span>
         </div>
         <div class="sbp-dice">${dice}${verdict}</div>
       </div>`;
@@ -506,7 +507,6 @@ export function mount({ container, me, sendInput }) {
     if (!hasWing(s)) return '';
     const living = wingSquads(s.id).filter((q) => q.alive);
     // Attack targets: enemy ships, then launched enemy squadrons, nearest first.
-    const enemies = attackTargets(s);
     return `
       <h3 class="sbp-h">Squadrons <small class="muted">each gets its own order</small></h3>
       ${living.map((q) => {
@@ -521,7 +521,7 @@ export function mount({ container, me, sendInput }) {
               <button data-act="squadOrder" data-q="${q.id}" data-o="${id}" class="${cur.order === id ? 'on' : ''}">${SQUAD_ORDERS[id].icon} ${escapeHtml(SQUAD_ORDERS[id].name)}</button>`).join('')}
             </div>
             ${SQUAD_ORDERS[cur.order].needsTarget ? `
-              <div class="sbp-hunt">${enemies.map(({ t, dist }) => `
+              <div class="sbp-hunt">${attackTargets(s, q).map(({ t, dist }) => `
                 <button class="sbp-target ${cur.target === t.id ? 'on' : ''}" data-act="squadTarget" data-q="${q.id}" data-id="${t.id}">
                   <span><span class="dot" style="background:${person(t.owner).color}"></span>${isSquad(t) ? '✈ ' : ''}${escapeHtml(unitName(t))} <small>${escapeHtml(person(t.owner).name)}</small></span>
                   <span>${dist.toFixed(1)} u ${cur.target === t.id ? '⚔' : ''}</span></button>`).join('')}
@@ -535,11 +535,12 @@ export function mount({ container, me, sendInput }) {
     ? 'Pick Attack or Intercept to launch a docked squadron. It appears behind the carrier after the ships move.'
     : 'Return flies a squadron back to dock in the carrier.');
 
-  // What a carrier's squadrons may Attack: living enemy ships, then launched enemy squadrons.
-  function attackTargets(s) {
+  // What squadron `q` of carrier `s` may Attack: living enemy ships, then launched enemy squadrons
+  // (not for Bombers, which only attack ships).
+  function attackTargets(s, q) {
     const d = (t) => Math.hypot(t.x - s.x, t.y - s.y);
     const shipsList = state.ships.filter((t) => t.alive && t.faction !== s.faction);
-    const sqList = squads().filter((q) => q.alive && !q.docked && q.faction !== s.faction);
+    const sqList = squadDef(q).shipsOnly ? [] : squads().filter((x) => x.alive && !x.docked && x.faction !== s.faction);
     return [...shipsList.sort((a, b) => d(a) - d(b)), ...sqList.sort((a, b) => d(a) - d(b))].map((t) => ({ t, dist: d(t) }));
   }
 
@@ -551,7 +552,7 @@ export function mount({ container, me, sendInput }) {
     const cur = d.squads?.[qid] || q.order;
     const o = { order };
     if (SQUAD_ORDERS[order].needsTarget) {
-      const list = attackTargets(s).map((x) => x.t);
+      const list = attackTargets(s, q).map((x) => x.t);
       const keep = list.find((t) => t.id === (target || cur.target));
       o.target = keep?.id || list[0]?.id;
       if (!o.target) return;
@@ -768,7 +769,7 @@ export function mount({ container, me, sendInput }) {
                         const sel = chosen === t.id;
                         return `<button class="sbp-target ${sel ? 'on' : ''} ${rowIndex(arc, wi, t.id) === selRow ? 'cursor' : ''}" data-act="target" data-arc="${arc}" data-wi="${wi}" data-id="${t.id}">
                           <span><span class="dot" style="background:${person(ts.owner).color}"></span>${isSquad(ts) ? '✈ ' : ''}${escapeHtml(unitName(ts))} <small>${escapeHtml(person(ts.owner).name)}</small></span>
-                          <span>${BAND_NAMES[t.band]} · hits on ${Math.min(t.need, HIT.die)}+ · ≈${t.expected.toFixed(1)} ${unit} ${sel ? '✔' : ''}</span></button>`;
+                          <span>${BAND_NAMES[t.band]} · ${t.need <= 1 ? 'always hits' : `hits on ${Math.min(t.need, HIT.die)}+`} ·≈${t.expected.toFixed(1)} ${unit} ${sel ? '✔' : ''}</span></button>`;
                       }).join('')}
                       <button class="sbp-target hold ${chosen ? '' : 'on'} ${rowIndex(arc, wi, null) === selRow ? 'cursor' : ''}" data-act="target" data-arc="${arc}" data-wi="${wi}" data-id="">
                         <span>${wd.once ? 'Hold (save it for later)' : 'Hold fire'}</span><span>${chosen ? '' : '✔'}</span></button>`
@@ -1233,8 +1234,8 @@ export function mount({ container, me, sendInput }) {
       else if (k === 'e') { selSeg = Math.min(d.clicks.length - (endTurnClicks(shipById(selShip), d.stance) ? 0 : 1), selSeg + 1); render(); }
       else if (k === 'm' && specialLeft(shipById(selShip), 'mineDrop') > 0) { d.mine = !d.mine; render(); }
       else if (k === 'l' && hasWing(shipById(selShip))) {
-        // Launch every docked squadron on Intercept.
-        for (const q of wingSquads(selShip)) if (q.alive && q.docked) (d.squads || (d.squads = {}))[q.id] = { order: 'intercept' };
+        // Launch every docked squadron: Intercept, or (Bombers) Attack the nearest enemy ship.
+        for (const q of wingSquads(selShip)) if (q.alive && q.docked) setSquadOrder(q.id, squadOrderAllowed(q.type, 'intercept') ? 'intercept' : 'attack');
         render();
       }
       else if (k === 'z') cycleStance(-1);
