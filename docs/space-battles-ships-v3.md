@@ -18,7 +18,7 @@ shields first then hull, shields don't recharge on their own). Pirates are not c
 
 ## Arcs
 
-- ✅ **Spinal 30°**: Torpedo, Particle Lance.
+- ✅ **Spinal 30°**: Torpedo, Particle Lance, Dark Lance.
 - ✅ **Turret 360°**: Disruptor, point-defense.
 - ✅ Everything else is a **Battery** (270°, all but the rear 90°).
 - ✅ **Show the 30° arc while planning movement:** if a ship has a 30° weapon, the moving player
@@ -50,6 +50,7 @@ shields first then hull, shields don't recharge on their own). Pirates are not c
 | Small Railgun Battery | 1 | Medium | Battery | 1 | |
 | Large Railgun Battery | 2 | Medium | Battery | 3 | |
 | Disruptor | **2** | Close | Turret 360° | — | ✅ **Always hits (no roll).** Does no damage but causes **1 critical hit**. |
+| ✅ Dark Lance | **3** | Long | Spinal 30° | 5 | Samurai only. Uses all its Power, so it never fires in the same round as the Disruptor. |
 | Acid Spitter | 1 | Close | Battery | 1 | Acid: **1 more damage next round**, ignoring shields ✅. |
 
 ## Ships
@@ -74,7 +75,7 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Ship | Class | Cost | Hull | Shields | ⚡ | Speed | Clicks | Weapons | PD | Special |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Grunt | Corvette | 7 | 5 | 1/1/1/0 | 2 | 2–5 | 2/1/1/1 | Plasma Maw, Small Railgun ×2 | 0 | Violent Turn stance |
-| Samurai | Destroyer | 12 | 7 | 1/1/1/0 | 3 | 2–5 | 3/3/2/2 | Disruptor, Large Railgun, Small Railgun ×2 | Thorn ×1 | |
+| Samurai | Destroyer | 12 | 7 | 1/1/1/0 | 3 | 2–5 | 3/3/2/2 | Disruptor, Dark Lance, Small Railgun ×2 | Thorn ×1 | |
 | Brute | Cruiser | 18 | 11 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Railgun ×3, Acid Spitter ×2, Small Railgun ×2 | Thorn ×2 | |
 | Queen | Battleship | 16 | 14 | 3/3/3/2 | 4 | 1–3 | 3/2/1 | Large Railgun, Small Railgun ×4 | Thorn ×3 | Carrier (4 squadrons) |
 
@@ -83,7 +84,8 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 - **Torpedo Boat 8 vs Grunt 7:** the Torpedo Boat's torpedo can kill a Grunt in one hit, and it turns
   better. The Grunt is a bit cheaper so the Djn'zuar can field more of them.
 - ✅ **Escort 11 vs Samurai 12:** the Escort is tougher and has the best PD but weak guns (only 3
-  Power). The Samurai hits harder, is faster and has the auto-hit Disruptor.
+  Power). The Samurai hits harder, is faster, and picks each round between its long-range Dark Lance
+  (5 damage, spinal) and the auto-hit Disruptor.
 - **Lancer 18 = Brute 18:** about the same damage. The Lancer outranges, the Brute is tougher.
 - ✅ **Fleet Carrier 18, Queen 16 (empty):** the Fleet Carrier has much better guns, while the Queen
   has more hull and one more hangar. Squadrons are bought on top.

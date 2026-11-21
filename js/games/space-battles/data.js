@@ -107,6 +107,8 @@ export const WEAPONS = {
     desc: 'Light railguns.' },
   largeRail: { name: 'Large Railgun Battery', arc: 'battery', reach: 'medium', power: 2, damage: 3, shots: 1,
     desc: 'Heavy railguns.' },
+  darkLance: { name: 'Dark Lance', arc: 'spinal', reach: 'long', power: 3, damage: 5, shots: 1,
+    desc: 'A heavy spinal beam. Point the ship at the target. Uses all of a Samurai\'s Power.' },
   critDisruptor: { name: 'Disruptor', arc: 'turret', reach: 'close', power: 2, damage: 0, shots: 1, effect: 'crit', noSquadrons: true, autoHit: true,
     desc: 'Fires in any direction. Always hits (no roll). Does no damage but causes a critical hit.' },
   acid: { name: 'Acid Spitter', arc: 'battery', reach: 'close', power: 1, damage: 1, shots: 1, effect: 'acid',
@@ -224,9 +226,9 @@ export const SHIPS = {
   samurai: {
     name: 'Samurai', short: 'Samurai', faction: 'djnzuar', class: 'destroyer', cost: 12,
     ratings: { o: 4, d: 2, m: 5 },
-    desc: 'A fast, agile raider. Its Disruptor cripples ships up close.',
+    desc: 'A fast, agile raider. Snipes with its Dark Lance, or dives in and cripples ships with its Disruptor.',
     hull: 7, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3 }, power: 3,
-    weapons: ['critDisruptor', 'largeRail', 'smallRail', 'smallRail'], pd: [pd('thorn', 1)],
+    weapons: ['critDisruptor', 'darkLance', 'smallRail', 'smallRail'], pd: [pd('thorn', 1)],
   },
   grunt: {
     name: 'Grunt', short: 'Grunt', faction: 'djnzuar', class: 'corvette', cost: 7,
@@ -299,7 +301,7 @@ export const TIMING = {
 // TV match. Point-defense is always yellow; squadrons use `squad`.
 export const DICE_COLORS = {
   torpedo: '#ffa94d', smallLaser: '#ff8787', largeLaser: '#fa5252', ion: '#8ce1ff', lance: '#da77f2',
-  maw: '#ff922b', smallRail: '#74c0fc', largeRail: '#4dabf7', critDisruptor: '#e599f7', acid: '#a9e34b',
+  maw: '#ff922b', smallRail: '#74c0fc', largeRail: '#4dabf7', darkLance: '#9775fa', critDisruptor: '#e599f7', acid: '#a9e34b',
   autocannon: '#dee2e6', breaching: '#ff6b6b', disruptor: '#ffe066', boarding: '#ff922b',
   pd: '#ffd43b', squad: '#b197fc',
 };
