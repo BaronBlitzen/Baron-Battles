@@ -73,7 +73,7 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Ship | Class | Cost | Hull | Shields | ⚡ | Speed | Clicks | Weapons | PD | Special |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Grunt | Corvette | 7 | 5 | 1/1/1/0 | 2 | 2–5 | 2/1/1/1 | Plasma Maw, Small Railgun ×2 | 0 | Violent Turn stance |
-| Samurai | Destroyer | 12 | 7 | 1/1/1/0 | 3 | 2–5 | 3/3/2/2 | Disruptor, Large Railgun, Small Railgun ×2 | 0 | |
+| Samurai | Destroyer | 12 | 7 | 1/1/1/0 | 3 | 2–5 | 3/3/2/2 | Disruptor, Large Railgun, Small Railgun ×2 | Thorn ×1 | |
 | Brute | Cruiser | 18 | 11 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Railgun ×3, Acid Spitter ×2, Small Railgun ×2 | Thorn ×2 | |
 | Queen | Battleship | 16 | 14 | 3/3/3/2 | 4 | 1–3 | 3/2/1 | Large Railgun, Small Railgun ×4 | Thorn ×3 | Carrier (4 squadrons) |
 
@@ -102,10 +102,13 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Squadron | Faction | Cost | Craft | Hull / Shield each | Speed | Weapon | Reach | Damage | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | Fighters | Protectorate | 3 | 4 | 1 / 1 | **16 u** | Laser Cannon | Close | 1 | |
-| Bombers | Protectorate | 4 | 3 | 1 / 1 | **12 u** | Nuclear Bomb | Close | 2 | **Ignores shields.** ✅ **Ships only:** can't attack squadrons (no Intercept, no squadron targets). |
+| Bombers | Protectorate | 4 | 3 | 1 / 1 | **12 u** | Nuclear Bomb | Close | 2 | **Ignores shields.** ✅ **Ships only:** can't attack squadrons (no Intercept, no squadron targets). ✅ **One bombing run** (see below). |
 | Swarmers | Djn'zuar | 3 | **6** | 1 / 0 | **16 u** | Bite Cannon | Close | 1 | **−1 accuracy.** |
 
-- Bombers cost the most: about 4 hull damage a round against a big ship, and shields don't stop it.
+- Bombers cost the most: about 4 hull damage per run against a big ship, and shields don't stop it.
+- ✅ **One bombing run:** after Bombers attack a ship they are **spent**. They're forced onto
+  **Return**, can't shoot, and fly back to their carrier. Docking re-arms them; they may launch again
+  the round after they dock. If their carrier is destroyed they can never re-arm.
 - ✅ **Swarmers are the only Djn'zuar squadron.** Gorers and Latchers are removed.
 - The Strike Carrier holds any mix of Fighters and Bombers. The Queen holds Swarmers.
 
@@ -120,8 +123,14 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 
 ## Point-defense ✅
 
-Same rules as v2: free, automatic, Close range, 360°, aims at the nearest enemy squadron, hits on
-4+ ignoring squadron agility, 1 damage per hit, can't hurt ships, stances don't change it.
+Same rules as v2: free, automatic, Close range, 360°, hits on 4+ ignoring squadron agility,
+1 damage per hit, can't hurt ships, stances don't change it.
+
+- ✅ **PD fires first at its attackers:** if an enemy squadron is attacking this ship this round,
+  PD aims at the nearest such squadron and its shots land **before** that squadron fires. Craft it
+  destroys never get to shoot (a Bomber shot down never drops its bomb). Otherwise PD aims at the
+  nearest enemy squadron in close range and fires with everything else.
+- ✅ **Samurai gets Thorn ×1.**
 
 - ✅ **PD tracers are drawn in yellow** during the fire phase so players can see what PD is shooting.
 - ✅ **PD is shown on the Roll Dice screen** as its own yellow row ("🛡 Point-defense (automatic)"), so

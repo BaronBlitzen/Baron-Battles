@@ -356,14 +356,19 @@ export function mount({ container, me, sendInput }) {
   function rollRow(r, i) {
     const shown = i < rollShown;
     const tumbling = !shown && i === rollShown && rollStage === 'rolling';
-    const kind = r.kind === 'pd' ? '🛡 Point-defense (automatic) · ' : r.kind === 'squad' ? '✈ ' : '';
+    const kind = r.kind === 'pd' ? (r.first ? '🛡 Point-defense (fires first) · ' : '🛡 Point-defense (automatic) · ') : r.kind === 'squad' ? '✈ ' : '';
+    const notes = [];
+    if (r.lost) notes.push(`🛡 ${r.lost} craft shot down by point-defense before firing`);
+    if (r.oneRun) notes.push('💣 One bombing run: then they fly back to re-arm');
     const crit = r.critOn ? `<small> · crit ${r.critOn}${r.critOn < 10 ? '+' : ''}</small>` : '';
     const auto = r.need <= 1; // auto-hit weapon (Disruptor): no roll needed
     const dice = r.dice.map(([v, res]) => (shown
       ? `<span class="sbp-die ${res}">${auto ? '✓' : v}</span>`
       : `<span class="sbp-die ${tumbling ? 'tumble' : 'blank'}">${tumbling ? 1 + Math.floor(Math.random() * 10) : ''}</span>`)).join('');
     let verdict = '';
-    if (shown) {
+    if (shown && !r.dice.length) {
+      verdict = '<span class="sbp-verdict miss">Shot down!</span>'; // every craft lost before firing
+    } else if (shown) {
       const v = verdictOf(r);
       const hits = r.dice.filter((d) => d[1] !== 'miss').length;
       verdict = `<span class="sbp-verdict ${v}">${VERDICT[v]}${r.dice.length > 1 ? `<small>${hits} of ${r.dice.length} hit</small>` : ''}</span>`;
@@ -374,6 +379,7 @@ export function mount({ container, me, sendInput }) {
           <span><b>${escapeHtml(r.weapon)}</b><br><small>${kind}${escapeHtml(r.from)} → ${escapeHtml(r.to)}</small></span>
           <span class="sbp-need">${auto ? 'Auto-hit' : `Need ${r.need}${r.need < 10 ? '+' : ''}${crit}`}</span>
         </div>
+        ${notes.length ? `<small class="muted">${notes.map(escapeHtml).join('<br>')}</small>` : ''}
         <div class="sbp-dice">${dice}${verdict}</div>
       </div>`;
   }
@@ -498,8 +504,9 @@ export function mount({ container, me, sendInput }) {
   }
 
   // Orders this squadron may get now (Stay docked only while docked, Return only once launched).
-  const ordersFor = (q) => SQUAD_ORDER_LIST.filter((id) => (q.docked ? !SQUAD_ORDERS[id].launchedOnly : !SQUAD_ORDERS[id].dockedOnly)
-    && squadOrderAllowed(q.type, id));
+  // Spent Bombers (bombs dropped) can only Return until they dock and re-arm.
+  const ordersFor = (q) => (q.spent && !q.docked ? ['return'] : SQUAD_ORDER_LIST.filter((id) => (q.docked ? !SQUAD_ORDERS[id].launchedOnly : !SQUAD_ORDERS[id].dockedOnly)
+    && squadOrderAllowed(q.type, id)));
 
   // Carrier squadrons (rules §8): one order per squadron. A docked squadron given Escort,
   // Attack or Intercept launches this round.
@@ -516,7 +523,7 @@ export function mount({ container, me, sendInput }) {
         return `
           <div class="sbp-arc ${launching ? 'on' : ''}">
             <div class="sbp-arc-head"><b>${escapeHtml(squadLabel(q))} <small>${SQUADRON_ROLES[sd.role].name} · ${craftText(q)}</small></b>
-              <small>${q.docked ? (launching ? '🚀 Launching' : '🏠 Docked') : 'In space'}</small></div>
+              <small>${q.docked ? (launching ? '🚀 Launching' : '🏠 Docked') : q.spent ? '💣 Bombs used: returning to re-arm' : 'In space'}</small></div>
             <div class="sbp-sqorders">${ordersFor(q).map((id) => `
               <button data-act="squadOrder" data-q="${q.id}" data-o="${id}" class="${cur.order === id ? 'on' : ''}">${SQUAD_ORDERS[id].icon} ${escapeHtml(SQUAD_ORDERS[id].name)}</button>`).join('')}
             </div>
@@ -656,7 +663,7 @@ export function mount({ container, me, sendInput }) {
     const pack = packBonus(s, units());
     const packNote = pack ? `<p class="sbp-burn">${faceImg('bossim', 22)} Bossim's Pack Leader: all weapons +${pack} accuracy.</p>` : '';
     const pd = shipDef(s).pd.length
-      ? '<p class="sbp-small muted">Point-defense is free and fires on its own at the nearest enemy squadron in close range. Its yellow dice show up when you tap Fire!</p>' : '';
+      ? '<p class="sbp-small muted">Point-defense is free and fires on its own. It shoots first at squadrons attacking this ship (craft it downs never fire), otherwise at the nearest enemy squadron in close range. Its yellow dice show up when you tap Fire!</p>' : '';
     return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + packNote + amelia + pd;
   }
 

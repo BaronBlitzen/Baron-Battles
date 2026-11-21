@@ -36,6 +36,7 @@ export const games = [
       '<b>2. Move:</b> every ship moves at the same time. Hitting asteroids, the map edge or enemy ships does damage.',
       '<b>3. Plan Fire</b> (secret): pick which weapons to power and a target for each one. Weapons cost <b>Power</b>, and each ship only has so much, so choose wisely.',
       '<b>4. Roll dice:</b> tap <b>Fire!</b> on your phone to roll a d10 for every shot (each weapon has its own dice color). The top of each row shows the number you need. Then all shots fly on the TV at once: hits strike the ship, misses streak past, and crits flash big. Point-defense and squadrons roll here too.',
+      '<b>Point-defense</b> (free, automatic) shoots first at enemy squadrons attacking its ship: craft it shoots down never fire. <b>Bombers</b> only attack ships and get one bombing run, then must fly back and dock to re-arm.',
       '<b>Hitting:</b> each shot rolls a 10-sided die. It hits on a 4 or higher (small, nimble ships are harder to hit). A 10 is a critical hit.',
       '<b>Damage:</b> hits take down the shield on the side facing the attacker first, then the hull. A critical that gets past the shields breaks one of the ship\'s systems.',
       '<b>Timer:</b> each planning step lasts up to 2 minutes and ends early when everyone taps Ready. If you run out of time, your ships fly straight and fire on their own.',

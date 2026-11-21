@@ -219,7 +219,7 @@ export const SHIPS = {
     ratings: { o: 4, d: 2, m: 5 },
     desc: 'A fast, agile raider. Its Disruptor cripples ships up close.',
     hull: 7, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3 }, power: 3,
-    weapons: ['critDisruptor', 'largeRail', 'smallRail', 'smallRail'],
+    weapons: ['critDisruptor', 'largeRail', 'smallRail', 'smallRail'], pd: [pd('thorn', 1)],
   },
   grunt: {
     name: 'Grunt', short: 'Grunt', faction: 'djnzuar', class: 'corvette', cost: 7,
@@ -441,14 +441,16 @@ export const CRIT_POOL = ['hull', 'weapons', 'thrusters', 'shieldGen', 'engines'
 //   fighter  – the nearest enemy squadron in close range, else the nearest enemy ship
 //   bomber   – the nearest enemy ship in close range (never squadrons)
 // Optional: `accuracy` (−1 = needs 1 higher), `ignoreShields`, `crit` (its 10s against ships crit),
-// `shipsOnly` (can't attack squadrons: no Intercept order, no squadron targets).
+// `shipsOnly` (can't attack squadrons: no Intercept order, no squadron targets), `oneRun` (after it
+// attacks a ship it is "spent": it must Return, can't shoot, and re-arms when it docks; it may launch
+// again the round after docking).
 export const SQUADRONS = {
   fighters: { name: 'Fighters', short: 'Fighters', faction: 'protectorate', role: 'fighter', cost: 3, craft: 4, shield: 1, speed: 16,
     weapon: 'Laser Cannon', damage: 1, crit: false,
     desc: 'Fast fighters. Hunt enemy squadrons first.' },
   bombers: { name: 'Bombers', short: 'Bombers', faction: 'protectorate', role: 'bomber', cost: 4, craft: 3, shield: 1, speed: 12,
-    weapon: 'Nuclear Bomb', damage: 2, ignoreShields: true, crit: true, shipsOnly: true,
-    desc: 'Nuclear bombs ignore shields. Can only attack ships, never squadrons.' },
+    weapon: 'Nuclear Bomb', damage: 2, ignoreShields: true, crit: true, shipsOnly: true, oneRun: true,
+    desc: 'Nuclear bombs ignore shields. Only attack ships. One bombing run, then they must fly back and dock to re-arm.' },
   swarmers: { name: 'Swarmers', short: 'Swarmers', faction: 'djnzuar', role: 'fighter', cost: 3, craft: 6, shield: 0, speed: 16,
     weapon: 'Bite Cannon', damage: 1, accuracy: -1, crit: false,
     desc: 'A big, fast swarm with no shields. Hunts enemy squadrons first.' },

@@ -44,7 +44,7 @@ const cloneSquad = (q) => ({ ...q, order: { ...q.order } });
 const publicSquad = (q) => ({
   id: q.id, kind: 'squad', type: q.type, faction: q.faction, owner: q.owner, carrier: q.carrier,
   slot: q.slot, x: q.x, y: q.y, hull: q.hull, shields: q.shields, alive: q.alive, docked: !!q.docked, order: { ...q.order },
-  captain: q.captain || null, letter: q.letter || '',
+  captain: q.captain || null, letter: q.letter || '', spent: !!q.spent,
 });
 const publicShip = (s) => ({
   id: s.id, type: s.type, faction: s.faction, owner: s.owner, x: s.x, y: s.y,
@@ -664,6 +664,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (q.alive && !q.docked && q.order.order === 'return' && canDock(q, ships)) {
         q.docked = true;
         q.order = { order: 'docked' };
+        q.spent = false; // Bombers re-arm when they dock (they may launch again next round)
         docking.add(q.id);
       }
       q.latched = latchTarget(q, ships)?.id || null;
@@ -721,9 +722,10 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   // A squadron's automatic attack: every living craft fires one shot. Only bombers crit (on a 10,
   // vs ships). Screen (no ship has it right now): −1 shot against screened ships.
-  function rollSquad(q, t) {
+  // `craft` = craft still flying when it fires (fewer if point-defense shot some down first).
+  function rollSquad(q, t, craft = q.hull) {
     const def = squadDef(q);
-    let shots = q.hull;
+    let shots = craft;
     const screen = !isSquad(t) && screened(t, ships);
     if (screen) shots = Math.max(0, shots - 1);
     const need = needToHit(q, null, t, ships);
@@ -767,6 +769,13 @@ export function start({ container, players, setPhoneState, onExit }) {
     }
     const all = units();
     const attacks = [];
+    const firstStrike = []; // point-defense shots at squadrons attacking that ship: they land first
+    // Who each squadron attacks this round (decided before anything fires).
+    const squadTargets = {};
+    for (const q of squads) {
+      const t = q.alive ? squadAttackTarget(q, all) : null;
+      if (t) squadTargets[q.id] = t;
+    }
     for (const s of ships) {
       if (!s.alive) continue;
       const planned = ready[s.owner] && firePlans[s.owner]?.[s.id];
@@ -784,36 +793,55 @@ export function start({ container, players, setPhoneState, onExit }) {
           }
         }
       }
-      // Point-defense fires on its own at the nearest enemy squadron in close range (free, not
-      // changed by stances or criticals).
-      const pt = pdTarget(s, squads);
-      if (pt) for (const w of shipDef(s).pd) attacks.push({ from: s.id, to: pt.id, zone: null, pd: true, ...rollWeapon(s, pt, w, w.shots) });
+      // Point-defense fires on its own (free, not changed by stances or criticals): first at an enemy
+      // squadron attacking this ship (those shots land before the squadron fires), else at the
+      // nearest enemy squadron in close range.
+      const attackers = squads.filter((q) => squadTargets[q.id]?.id === s.id);
+      const pt = pdTarget(s, squads, attackers);
+      if (pt) {
+        const first = attackers.includes(pt);
+        for (const w of shipDef(s).pd) (first ? firstStrike : attacks).push({ from: s.id, to: pt.id, zone: null, pd: true, first, ...rollWeapon(s, pt, w, w.shots) });
+      }
     }
-    // Squadron attacks (automatic).
+    // Work out which attacking craft that point-defense shoots down before they can fire (same
+    // order and rules as resolveFire, where these shots are also applied first).
+    const left = Object.fromEntries(squads.map((q) => [q.id, cloneSquad(q)]));
+    const dodged = new Set();
+    for (const a of firstStrike) {
+      const q = left[a.to];
+      let hits = a.hits;
+      if (hits > 0 && captainOf(q)?.ignoreFirstHit && !dodged.has(q.id)) { dodged.add(q.id); hits--; }
+      applySquadHits(q, new Array(hits).fill(a.perHit), a.ignoreShields);
+    }
+    // Squadron attacks (automatic), by the craft still flying.
     for (const q of squads) {
-      if (!q.alive) continue;
-      const t = squadAttackTarget(q, all);
+      const t = squadTargets[q.id];
       if (!t) continue;
-      attacks.push({ from: q.id, to: t.id, zone: isSquad(t) ? null : zoneFacing(t, q.x, q.y), ...rollSquad(q, t) });
+      const craft = Math.max(0, left[q.id].hull);
+      attacks.push({ from: q.id, to: t.id, zone: isSquad(t) ? null : zoneFacing(t, q.x, q.y), lost: q.hull - craft, ...rollSquad(q, t, craft) });
     }
+    attacks.unshift(...firstStrike);
     for (const a of attacks) a.color = diceColor(a.weapon, a.pd);
     // What the phones see: one row per weapon type, shooter and target (two Small Lasers on the same
     // ship at the same target share a row). Each phone shows only its owner's rows.
     const pub = [];
     const rowByKey = {};
     for (const a of attacks) {
-      if (!a.shots) continue;
+      if (!a.shots && !a.lost) continue;
       const from = unitById(a.from), to = unitById(a.to);
-      const key = [a.from, a.to, a.weapon, a.pd, a.need, a.critOn].join('|');
+      const key = [a.from, a.to, a.weapon, a.pd, a.first, a.need, a.critOn].join('|');
       if (rowByKey[key]) { rowByKey[key].dice.push(...a.dice); continue; }
       pub.push(rowByKey[key] = {
         owner: from.owner, from: unitName(from), to: unitName(to),
         weapon: a.weapon ? WEAPONS[a.weapon].name : squadDef(from).weapon || 'Guns',
         kind: a.pd ? 'pd' : isSquad(from) ? 'squad' : 'weapon', color: a.color,
         need: Math.min(HIT.die, a.need), critOn: a.critOn, dice: [...a.dice],
+        first: !!a.first, lost: a.lost || 0,
+        oneRun: isSquad(from) && !isSquad(to) && !!squadDef(from).oneRun,
       });
     }
-    rollData = { attacks, turned };
+    const shotDown = Object.fromEntries(attacks.filter((a) => a.lost).map((a) => [a.from, a.lost]));
+    rollData = { attacks: attacks.filter((a) => a.shots > 0), turned, shotDown }; // shot-down squadrons don't fire
     rollPublic = { round, attacks: pub };
     rolled = {};
     // Players with nothing to roll don't hold anyone up.
@@ -838,7 +866,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   function resolveFire() {
-    const { attacks, turned } = rollData;
+    const { attacks, turned, shotDown } = rollData;
     rollData = null;
     // All attacks land together on copies, so a ship destroyed now still fired.
     const next = ships.map(clone);
@@ -857,6 +885,16 @@ export function start({ container, players, setPhoneState, onExit }) {
       tags.push({ shipId, text, color, at });
     };
     for (const [id, rot] of turned) tag(id, `⏳ Kairos turned ${rot < 0 ? 'left' : 'right'}`, '#8ce1ff', t0 + 100);
+    // Point-defense that fired first: craft it shot down before they could attack.
+    for (const [id, n] of Object.entries(shotDown)) tag(id, `🛡 ${n} shot down before firing`, '#ffd43b', t0 + 300);
+    // Bombers (one run): after bombing a ship they're spent and must fly back to re-arm.
+    for (const a of attacks) {
+      const q = nextById[a.from];
+      if (!isSquad(q) || !squadDef(q).oneRun || isSquad(nextById[a.to])) continue;
+      q.spent = true;
+      q.order = { order: 'return' };
+      tag(q.id, '💣 Bombs away! Returning to re-arm', '#b197fc');
+    }
     const grappledBy = {}; // target id -> first attacker that grappled it
     const shrugged = new Set(); // Iceman Flaggs squadrons that already ignored a hit this round
     for (const a of attacks) {

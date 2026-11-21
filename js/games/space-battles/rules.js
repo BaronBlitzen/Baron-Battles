@@ -274,6 +274,7 @@ export function sanitizeSquadOrder(q, o, units) {
   const def = o && SQUAD_ORDERS[o.order];
   if (!def || (def.dockedOnly && !q.docked) || (def.launchedOnly && q.docked)) return null;
   if (!squadOrderAllowed(q.type, o.order)) return null;
+  if (q.spent && !q.docked && o.order !== 'return') return null; // spent Bombers must Return
   const out = { order: o.order };
   if (def.needsTarget) {
     const t = units.find((x) => x.id === o.target);
@@ -344,7 +345,7 @@ export function planSquadMoves(squads, ships, map) {
     const enemyShips = ships.filter((s) => s.alive && isEnemy(q, s));
     const enemySquads = flying.filter((x) => isEnemy(q, x));
     let goal = null;
-    let order = o.order;
+    let order = q.spent ? 'return' : o.order; // spent Bombers always fly home to re-arm
     if (order === 'docked') order = 'escort'; // never expected for a launched squadron
     if (order === 'intercept' && !enemySquads.length) order = 'escort';
     if (order === 'return') {
@@ -420,7 +421,7 @@ export function planSquadMoves(squads, ships, map) {
 // ever shoot ships. Docked squadrons neither shoot nor get shot. Returns the target unit or null.
 // `units` = ships + squadrons.
 export function squadAttackTarget(q, units) {
-  if (!inSpace(q)) return null;
+  if (!inSpace(q) || q.spent) return null; // spent Bombers have no bombs left until they re-arm
   const def = squadDef(q);
   const inRange = units.filter((u) => inSpace(u) && isEnemy(q, u) && rangeBand(unitDistance(q, u)) === 'close'
     && !(def.shipsOnly && isSquad(u)));
@@ -442,11 +443,14 @@ export function screened(ship, ships) {
     && (w.id === ship.id || rangeBand(shipDistance(w, ship)) === 'close'));
 }
 
-// Point-defense target: the nearest launched enemy squadron in close range (all PD shots go there).
-export function pdTarget(ship, squads) {
+// Point-defense target (all of a ship's PD shots go there): the nearest enemy squadron that is
+// attacking this ship this round (`attackers`; PD shoots those first, before they fire), else the
+// nearest launched enemy squadron in close range.
+export function pdTarget(ship, squads, attackers = []) {
   if (!(shipDef(ship).pd || []).length) return null;
   const inRange = squads.filter((q) => inSpace(q) && isEnemy(ship, q) && rangeBand(unitDistance(ship, q)) === 'close');
-  return nearest(ship, inRange)?.u || null;
+  const first = inRange.filter((q) => attackers.some((a) => a.id === q.id));
+  return nearest(ship, first.length ? first : inRange)?.u || null;
 }
 
 // Boarding Pod latch: the enemy ship whose outline this (launched) pod touches (or null).
