@@ -492,7 +492,7 @@ function card(type) {
   const abilities = [];
   if (def.squadrons) {
     const types = Object.keys(SQUADRONS).filter((t) => SQUADRONS[t].faction === def.faction && (!def.carries || def.carries.includes(t)));
-    abilities.push({ icon: '✈', name: `Carrier (${def.squadrons})`, text: `Carries ${def.squadrons} squadrons: ${types.map((t) => SQUADRONS[t].name).join(', ')}. Each launches or returns on its own order.` });
+    abilities.push({ icon: '✈', name: `Carrier (${def.squadrons})`, text: `Carries ${def.squadrons} squadron${def.squadrons === 1 ? '' : 's'}:${types.map((t) => SQUADRONS[t].name).join(', ')}. Each launches or returns on its own order.` });
   }
   if (def.special) {
     const sp = SPECIALS[def.special];

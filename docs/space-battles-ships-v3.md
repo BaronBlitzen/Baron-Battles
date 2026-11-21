@@ -67,6 +67,7 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 | Escort | Destroyer | 11 | 8 | 2/2/2/1 | 3 | 1–4 | 3/2/1/1 | Ion Cannon, Small Laser ×3 | Flak ×3 | |
 | Lancer | Cruiser | 18 | 10 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Particle Lance, Large Laser ×2, Small Laser ×2 | Flak ×1 | |
 | Fleet Carrier | Cruiser | 18 | 11 | 2/2/2/1 | 6 | 1–4 | 2/2/1/1 | Large Laser ×2, Small Laser ×2, Ion Cannon | Flak ×2 | Carrier (3 squadrons) |
+| ✅ Assault Carrier | Destroyer | 13 | 7 | 2/2/2/1 | 4 | 1–4 | 3/2/1/1 | Large Laser, Small Laser ×2 | Flak ×2 | Carrier (1 squadron) |
 
 ### Djn'zuar ✅
 
@@ -86,6 +87,9 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
 - **Lancer 18 = Brute 18:** about the same damage. The Lancer outranges, the Brute is tougher.
 - ✅ **Fleet Carrier 18, Queen 16 (empty):** the Fleet Carrier has much better guns, while the Queen
   has more hull and one more hangar. Squadrons are bought on top.
+- ✅ **Assault Carrier 13:** an up-gunned Escort (4 Power fires all its guns: ~3.5 damage a round)
+  with 1 less hull and 1 less PD, plus one hangar. With Bombers (17) it about matches a Lancer (18),
+  but its damage comes in bursts. Sprite: Escort bow and gun pods with the Fleet Carrier's flight deck.
 - A full Fleet Carrier (18 + 3 squadrons ≈ 28) or full Queen (16 + 4 Swarmers = 28) is a bit under
   half of a 60-point fleet.
 - Costs were rebalanced with a value model (damage per round × how hard the ship is to kill). Squadrons
@@ -110,7 +114,7 @@ Agility comes from class, as in v2 (corvette 2, destroyer 1, cruiser/battleship 
   **Return**, can't shoot, and fly back to their carrier. Docking re-arms them; they may launch again
   the round after they dock. If their carrier is destroyed they can never re-arm.
 - ✅ **Swarmers are the only Djn'zuar squadron.** Gorers and Latchers are removed.
-- The Fleet Carrier holds any mix of Fighters and Bombers. The Queen holds Swarmers.
+- The Fleet Carrier and Assault Carrier hold any mix of Fighters and Bombers. The Queen holds Swarmers.
 
 ### Squadron orders ✅
 

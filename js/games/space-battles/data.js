@@ -177,6 +177,13 @@ export const SHIPS = {
     hull: 11, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 6,
     weapons: ['largeLaser', 'largeLaser', 'smallLaser', 'smallLaser', 'ion'], pd: [pd('flak', 2)], squadrons: 3,
   },
+  assaultCarrier: {
+    name: 'Assault Carrier', short: 'Assault Carrier', faction: 'protectorate', class: 'destroyer', cost: 13,
+    ratings: { o: 3, d: 2, m: 3, u: 4 },
+    desc: 'A small carrier on an escort hull. Brings one squadron to the fight and backs it up with a long-range laser.',
+    hull: 7, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 4,
+    weapons: ['largeLaser', 'smallLaser', 'smallLaser'], pd: [pd('flak', 2)], squadrons: 1,
+  },
   lancer: {
     name: 'Lancer', short: 'Lancer', faction: 'protectorate', class: 'cruiser', cost: 18,
     ratings: { o: 5, d: 3, m: 3 },
