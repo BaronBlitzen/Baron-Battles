@@ -19,6 +19,8 @@ export const PORTRAIT_PALETTE = {
   b: '#3b8cff', // blue warpaint
   g: '#5d6470', // rivets
   c: '#ff8a5c', y: '#ffe8a3', // starfish coral and spots (shade: 'o' from PALETTE)
+  n: '#6c7385', // light outline on black fur (Rzen)
+  j: '#7ac74f', J: '#4e8a32', a: '#a8d8ea', // frog skin, frog shade, helmet glass (Kaj'ik)
 };
 
 export const PORTRAIT_SIZE = 24;
@@ -26,6 +28,12 @@ export const PORTRAIT_SIZE = 24;
 // Left half (12 columns) → full 24 by mirroring.
 const mirror = (rows) => rows.map((r) => r + [...r].reverse().join(''));
 // Overwrite pixels: [row, col, 'chars'].
+// Black fur ('K') on the silhouette's edge (next to empty space) becomes a lighter outline ('n').
+const outline = (rows) => rows.map((r, y) => [...r].map((ch, x) => {
+  if (ch !== 'K') return ch;
+  const empty = (yy, xx) => (rows[yy]?.[xx] ?? '.') === '.';
+  return empty(y - 1, x) || empty(y + 1, x) || empty(y, x - 1) || empty(y, x + 1) ? 'n' : ch;
+}).join(''));
 const patch = (rows, edits) => {
   const out = rows.map((r) => [...r]);
   for (const [r, c, s] of edits) [...s].forEach((ch, i) => { out[r][c + i] = ch; });
@@ -415,6 +423,60 @@ export const PORTRAITS = {
     '..IVIIIIIiII',
     '.IIIIIIIIIII',
     'IIIIIIIIIIII',
+  ]),
+  // Black panther with antennae, side profile facing right, light outline.
+  rzen: outline([
+    '........................',
+    '.........Y..............',
+    '..........g.............',
+    '...........g............',
+    '........KK..g...........',
+    '.......KkKK.g...........',
+    '.......KKKKKKKK.........',
+    '......KKKKKKKKKKK.......',
+    '.....KKKKKKKKKKKKKK.....',
+    '.....KKKKKKKKKVkKKKK....',
+    '....KKKKKKKKKKKKKKKKK...',
+    '....KKKKKKKKKKKKKKKKKKK.',
+    '....KKKKKKKKKKKKKKKKKKkk',
+    '....KKKKKKKKKKKKKKgggKK.',
+    '....KKKKKKKKKKKKKKKkkkk.',
+    '.....KKKKKKKKKKKKKKKKK..',
+    '.....KKKKKKKKKKKKKKKK...',
+    '......KKKKKKKKKK........',
+    '......KKKKKKKKK.........',
+    '.....iiiKKKKKKii........',
+    '....IIIIiiiiiiIII.......',
+    '...IVIIIIIIIIIIIVI......',
+    '..IIIIIIIIIIIIIIIII.....',
+    '.IIIIIIIIIIIIIIIIIII....',
+  ].map((r) => r.padEnd(24, '.'))),
+  // A frog in a glass helmet and a bulky black-and-green spacesuit.
+  kajik: mirror([
+    '....aaaaaaaa',
+    '..aaaaaaaaaa',
+    '.aaaaJJJaaaa',
+    '.aaaJjjjJaaa',
+    'aaaJjekjjJaa',
+    'aaaJjkkjjjJJ',
+    'aaaJjjjjjjjj',
+    'aaJjjjjjjjjj',
+    'aaJjjjjjjjjj',
+    'aaJjjjjjjjjj',
+    'aaaJjkkkkkkk',
+    'aaaaJjjjjjjj',
+    '.aaaaJJJJJJJ',
+    '..aaaaaaaaaa',
+    '...KKKKKKKKK',
+    '.KKVVKKKKKKK',
+    'KKKVVKKKKKKK',
+    'KKKKKKKKVVVV',
+    'KKKKKKKKVJJV',
+    'KKKKKKKKVVVV',
+    'KKVKKKKKKKKK',
+    'KKVKKKKKKKKK',
+    'KKKKKKKKKKKK',
+    'KKKKKKKKKKKK',
   ]),
   // A five-armed coral starfish with yellow spots.
   flerf: mirror([

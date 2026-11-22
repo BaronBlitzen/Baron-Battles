@@ -252,6 +252,16 @@ Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 | Scavenger Hold | 1 | Carries 1 squadron of Scavengers. Removing it removes the squadron. |
 | Xar Teleporter | 2 | ✅ Once per game, the **Teleport** stance (picked in Plan Movement, so it shows when the Move starts). After the Move the TV says "Teleportation in progress" and the owner gets the whole map on their phone: tap any free spot (on the map, not overlapping a ship or an asteroid), turn it, Confirm. The ship jumps there and keeps its speed. 45 s to pick: when time runs out the last spot tapped is used, or the ship stays put if none was. The stance is used up either way. |
 
+### Rouge customizations ✅
+
+| Customization | Cost | Effect |
+|---|---|---|
+| Mine-Layer | 2 | +1 Power and a **Mine-Layer** (1 Power, no target): drops a mine just behind the ship, **3 per battle**. Never used by the default plan. |
+| Grappling Hook | 2 | +1 Power and a **Grappling Hook** (1 Power, Turret, medium, 1 damage, not at squadrons): the target is **pulled 2 u toward the Rouge whether or not it hits** (the first hook on a ship wins). |
+| Cyclone Launcher | 3 | +2 Power and a **Cyclone Launcher** (2 Power, **once per battle**): 5 missiles at one enemy ship, 1 damage each (same rules as Free Trader missiles). Priced 3, not 4, because it is one volley. |
+
+**Mines (all mines):** ✅ a ship that comes within **0.7 u** (a small asteroid's radius) sets one off: 3 damage to the side facing it, and if any hull is hit, a **Maneuvering Thrusters** critical. Mines are neutral: they hit any ship.
+
 ### Scavengers (squadron)
 
 | Squadron | Cost | Craft | Shield / Hull each | Speed | Weapon | Damage |
@@ -268,6 +278,8 @@ Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 | Mal Reynolds | Firefly | 2 | **Too Stubborn to Die:** once per game, the first time the Firefly would be destroyed it stays at 1 hull, and all other damage to it that round is cancelled (more shots, collisions, Hull Fire, acid). It starts the next Move with 1 hull. |
 | Sergeant Liu Bei | Rouge | 2 | Auto Cannon +1 shot and +1 accuracy. |
 | Flerf | Free Trader | 3 | **Five Arms:** each round one aimed weapon fires twice (no extra Power), the Dark Lance included. Picked in Plan Fire; with no pick, the strongest aimed weapon. |
+| Rzen | Rouge | 2 | ✅ Every enemy this ship attacked that is destroyed that round gives it **+1 hull** (its own missiles count; not above max hull). Portrait: black panther with antennae, side profile. |
+| Kaj'ik | Firefly | 2 | ✅ **Decoy Beacon:** once per game, in Plan Fire, drop a decoy where the Firefly is (before anything fires). Enemy missiles and squadrons attacking a friendly ship within close range (4 u) of it hit the decoy instead. It lasts until hit once. Squadrons hit it on 4+ (like a cruiser). Portrait: frog in a bulky black-and-green spacesuit. |
 
 ### Point-defense split (all factions) ✅
 

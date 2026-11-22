@@ -12,7 +12,7 @@ import {
   weaponTargets, weaponUsedUp, defaultFirePlan, arcWeapons, factionShipTypes, pointShare, fleetCost, buyProblem,
   stanceOptions, shipStances, maxSpeed, isSquad, squadDef, unitName, endTurnClicks, weaponOffline, boostCap,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
-  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus, upgradeChoices, upgradeProblem, missilesLeft,
+  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus, upgradeChoices, upgradeProblem, missilesLeft, ammoLeft,
   captainOf, captainChoices, captainProblem, canAddWild, teleportProblem, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
 } from './rules.js';
 import { faceImg } from './portraits.js';
@@ -37,6 +37,12 @@ function weaponTags(wd) {
 const dmgText = (wd, shots) => `${wd.effect === 'ion' ? '⛨' : wd.effect === 'crit' ? '💥' : wd.damage}×${shots}`;
 
 const BAND_NAMES = Object.fromEntries(RANGE_BANDS.map((b) => [b.id, b.name]));
+// Limited-ammo counters shown under Power (ship keys, see WEAPONS `ammo`).
+const AMMO_KINDS = [
+  { key: 'missiles', icon: '🚀', name: 'Missiles' },
+  { key: 'mineAmmo', icon: '💣', name: 'Mines' },
+  { key: 'cyclones', icon: '🌪', name: 'Cyclone volley' },
+];
 const VIEW_W = 18, VIEW_H = 12; // mini-map window, in units
 
 // Vibrate only after the player has touched the page (browsers block it otherwise).
@@ -56,6 +62,7 @@ export function mount({ container, me, sendInput }) {
   let holdDraft = {}; // shipId -> Smuggler's Hold choice { target, kind } (none = not used)
   let critDraft = {}; // shipId -> critical system id (Seir-Seir; none = random)
   let fiveDraft = {}; // shipId -> "arc:index" that fires twice (Flerf's Five Arms; none = strongest)
+  let decoyDraft = {}; // shipId -> true: drop Kaj'ik's Decoy Beacon this round
   let rotateDraft = {}; // shipId -> clicks the ship turns before shooting (Kairos; none = 0)
   let selShip = null;
   let selSeg = 0;
@@ -96,6 +103,7 @@ export function mount({ container, me, sendInput }) {
     holdDraft = {};
     critDraft = {};
     fiveDraft = {};
+    decoyDraft = {};
     rotateDraft = {};
     for (const s of myLiving()) {
       moveDraft[s.id] = defaultMovePlan(s);
@@ -135,7 +143,8 @@ export function mount({ container, me, sendInput }) {
       out.push(`Stance this round: ${s.stance.wild ? `${STANCES.wild.icon} ${STANCES.wild.name} + ` : ''}${st.icon} ${escapeHtml(st.name)}${s.stance.zone ? ` (${ZONE_NAMES[s.stance.zone]})` : ''}`);
     }
     if (captainOf(s)) out.push(`${captainHtml(s)}: ${escapeHtml(captainOf(s).desc)}`);
-    if (shipDef(s).missiles) out.push(`🚀 Missiles: ${missilesLeft(s)}/${shipDef(s).missiles} left`);
+    for (const am of AMMO_KINDS) if (shipDef(s)[am.key]) out.push(`${am.icon} ${am.name}: ${ammoLeft(s, am.key)}/${shipDef(s)[am.key]} left`);
+    if (captainOf(s)?.decoy) out.push(s.decoyUsed ? '📡 Decoy Beacon: used' : '📡 Decoy Beacon: ready (once per game, in Plan Fire)');
     if (captainOf(s)?.stubborn) out.push(s.lastStand ? '🔨 Too Stubborn to Die: saved this round, no more damage until next round' : s.stubbornUsed ? '🔨 Too Stubborn to Die: used' : '🔨 Too Stubborn to Die: ready');
     for (const m of s.mods || []) out.push(`${UPGRADES[m].icon} ${escapeHtml(UPGRADES[m].name)}: ${escapeHtml(UPGRADES[m].desc)}`);
     for (const c of s.crits || []) {
@@ -399,7 +408,9 @@ export function mount({ container, me, sendInput }) {
       ? `<span class="sbp-die ${res}">${auto ? '✓' : v}</span>`
       : `<span class="sbp-die ${tumbling ? 'tumble' : 'blank'}">${tumbling ? 1 + Math.floor(Math.random() * 10) : ''}</span>`)).join('');
     let verdict = '';
-    if (shown && r.flight) {
+    if (shown && r.kind === 'mine') {
+      verdict = '<span class="sbp-verdict hit">💣 Mine laid</span>';
+    } else if (shown && r.flight) {
       verdict = '<span class="sbp-verdict hit">In flight</span>';
     } else if (shown && !r.dice.length) {
       verdict = '<span class="sbp-verdict miss">Shot down!</span>'; // every craft (or the missile) lost before firing
@@ -411,8 +422,8 @@ export function mount({ container, me, sendInput }) {
     return `
       <div class="sbp-drow ${shown || tumbling ? '' : 'wait'}" style="--dc:${r.color}">
         <div class="sbp-drow-head">
-          <span><b>${escapeHtml(r.weapon)}</b><br><small>${kind}${escapeHtml(r.from)} → ${escapeHtml(r.to)}</small></span>
-          <span class="sbp-need">${auto ? 'Auto-hit' : `Need ${r.need}${r.need < 10 ? '+' : ''}${crit}`}</span>
+          <span><b>${escapeHtml(r.weapon)}</b><br><small>${kind}${r.kind === 'mine' ? `${escapeHtml(r.from)} drops a mine behind it` : `${escapeHtml(r.from)} → ${escapeHtml(r.to)}`}</small></span>
+          <span class="sbp-need">${r.kind === 'mine' ? '' : auto ? 'Auto-hit' : `Need ${r.need}${r.need < 10 ? '+' : ''}${crit}`}</span>
         </div>
         ${notes.length ? `<small class="muted">${notes.map(escapeHtml).join('<br>')}</small>` : ''}
         <div class="sbp-dice">${dice}${verdict}</div>
@@ -839,6 +850,15 @@ export function mount({ container, me, sendInput }) {
       </div>`;
   }
 
+  // Kaj'ik's Decoy Beacon (once per game): drop it this round, where the Firefly is.
+  function decoyPicker(s) {
+    if (!captainOf(s)?.decoy || s.decoyUsed) return '';
+    const on = !!decoyDraft[s.id];
+    return `
+      <button class="sbp-toggle ${on ? 'on' : ''}" data-act="decoy">📡 Decoy Beacon: ${on ? 'drop it this round ✔' : 'keep it (once per game)'}
+        <small>Enemy missiles and squadrons attacking a friendly ship within close range of it hit the decoy instead. One hit destroys it.</small></button>`;
+  }
+
   // Flerf's Five Arms: which aimed weapon fires twice this round (default: the strongest one).
   function fivePicker(s) {
     if (!captainOf(s)?.fiveArms) return '';
@@ -927,12 +947,13 @@ export function mount({ container, me, sendInput }) {
         ${shipTabs()}
         <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}${s.letter ? ` ${s.letter}` : ""}</b> <small class="muted">each weapon picks its own target</small></div>
         <div class="sbp-power"><b>⚡ Power ${used}/${power}</b><span class="sbp-power-bar">${Array.from({ length: Math.max(power, used) }, (_, i) => `<i class="${i < used ? 'on' : ''}"></i>`).join('')}</span><small>${power - used > 0 ? `${power - used} unused (wasted)` : 'all used'}</small></div>
-        ${shipDef(s).missiles ? `<div class="sbp-power"><b>🚀 Missiles ${missilesLeft(s)}/${shipDef(s).missiles}</b><span class="sbp-power-bar">${Array.from({ length: shipDef(s).missiles }, (_, i) => `<i class="${i < missilesLeft(s) ? 'on' : ''}"></i>`).join('')}</span><small>${missilesAimed(s, draftPlan(s.id)) ? `${missilesAimed(s, draftPlan(s.id))} launching this round` : 'left for the battle'}</small></div>` : ''}
+        ${AMMO_KINDS.filter((am) => shipDef(s)[am.key]).map((am) => { const max = shipDef(s)[am.key], left = ammoLeft(s, am.key), aim = ammoAimed(s, draftPlan(s.id), am.key); return `<div class="sbp-power"><b>${am.icon} ${am.name} ${left}/${max}</b><span class="sbp-power-bar">${Array.from({ length: max }, (_, i) => `<i class="${i < left ? 'on' : ''}"></i>`).join('')}</span><small>${aim ? `${aim} used this round` : 'left for the battle'}</small></div>`; }).join('')}
         ${fireStanceNote(s)}
         ${rotatePicker(s)}
         ${repairPicker(s)}
         ${critPicker(s)}
         ${fivePicker(s)}
+        ${decoyPicker(s)}
         ${holdPicker(s)}
         <canvas class="sbp-map"></canvas>
         ${ARCS.filter((arc) => arcWeapons(s, arc).length).map((arc) => `
@@ -954,8 +975,8 @@ export function mount({ container, me, sendInput }) {
                         const ts = unitById(t.id);
                         const sel = chosen === t.id;
                         return `<button class="sbp-target ${sel ? 'on' : ''} ${rowIndex(arc, wi, t.id) === selRow ? 'cursor' : ''}" data-act="target" data-arc="${arc}" data-wi="${wi}" data-id="${t.id}">
-                          <span><span class="dot" style="background:${person(ts.owner).color}"></span>${isSquad(ts) ? '✈ ' : ''}${escapeHtml(unitName(ts))} <small>${escapeHtml(person(ts.owner).name)}</small></span>
-                          <span>${wd.missile ? `${t.dist.toFixed(0)} u · ${t.dist <= MISSILE.strike ? 'hits this round' : `arrives in ~${1 + Math.ceil((t.dist - MISSILE.strike) / MISSILE.speed)} rounds`} · 2 dmg unless shot down` : `${BAND_NAMES[t.band]} · ${t.need <= 1 ? 'always hits' : `hits on ${Math.min(t.need, HIT.die)}+`} ·≈${t.expected.toFixed(1)} ${unit}`} ${sel ? '✔' : ''}</span></button>`;
+                          <span>${wd.layMine ? `💣 Drop a mine behind me <small>(${ammoLeft(s, wd.ammo)} left)</small>` : `<span class="dot" style="background:${person(ts.owner).color}"></span>${isSquad(ts) ? '✈ ' : ''}${escapeHtml(unitName(ts))} <small>${escapeHtml(person(ts.owner).name)}</small>`}</span>
+                          <span>${wd.layMine ? '' : wd.missile ? `${t.dist.toFixed(0)} u · ${t.dist <= MISSILE.strike ? 'hits this round' : `arrives in ~${1 + Math.ceil((t.dist - MISSILE.strike) / MISSILE.speed)} rounds`} · ${wd.shots > 1 ? `${wd.shots} missiles × ${wd.damage}` : wd.damage} dmg unless shot down` : `${BAND_NAMES[t.band]} · ${t.need <= 1 ? 'always hits' : `hits on ${Math.min(t.need, HIT.die)}+`} ·≈${t.expected.toFixed(1)} ${unit}`} ${sel ? '✔' : ''}</span></button>`;
                       }).join('')}
                       <button class="sbp-target hold ${chosen ? '' : 'on'} ${rowIndex(arc, wi, null) === selRow ? 'cursor' : ''}" data-act="target" data-arc="${arc}" data-wi="${wi}" data-id="">
                         <span>${wd.once ? 'Hold (save it for later)' : 'Hold fire'}</span><span>${chosen ? '' : '✔'}</span></button>`
@@ -1298,7 +1319,7 @@ export function mount({ container, me, sendInput }) {
   }
 
   // Missile Launchers aimed in a fire plan (each uses 1 missile).
-  const missilesAimed = (s, plan) => plan.reduce((n, a) => n + Object.keys(a.targets).filter((wi) => WEAPONS[arcWeapons(s, a.arc)[wi]?.weapon]?.missile).length, 0);
+  const ammoAimed = (s, plan, key) => plan.reduce((n, a) => n + Object.keys(a.targets).filter((wi) => WEAPONS[arcWeapons(s, a.arc)[wi]?.weapon]?.ammo === key).length, 0);
 
   // Aim one weapon at a target (tapping the same target again, or Hold, holds its fire).
   function pickTarget(arc, wi, targetId) {
@@ -1312,11 +1333,11 @@ export function mount({ container, me, sendInput }) {
       const s = shipById(selShip);
       const others = draftPlan(selShip).map((a) => ({ arc: a.arc, targets: Object.fromEntries(Object.entries(a.targets).filter(([k]) => !(a.arc === arc && Number(k) === wi))) }));
       const need = planPower(s, others) + weaponPower(arcWeapons(s, arc)[wi]);
-      const isMissile = WEAPONS[arcWeapons(s, arc)[wi].weapon].missile;
+      const ak = WEAPONS[arcWeapons(s, arc)[wi].weapon].ammo;
       if (need > shipPower(s)) {
         notice = `Not enough power (${need}/${shipPower(s)}). Set another weapon to Hold first.`;
-      } else if (isMissile && missilesAimed(s, others) + 1 > missilesLeft(s)) {
-        notice = `Only ${missilesLeft(s)} missile${missilesLeft(s) === 1 ? '' : 's'} left.`;
+      } else if (ak && ammoAimed(s, others, ak) + 1 > ammoLeft(s, ak)) {
+        notice = `None left: ${AMMO_KINDS.find((am) => am.key === ak)?.name || "ammo"} ${ammoLeft(s, ak)}/${shipDef(s)[ak]}.`;
       } else {
         (draft[arc] || (draft[arc] = {}))[wi] = targetId;
       }
@@ -1342,7 +1363,7 @@ export function mount({ container, me, sendInput }) {
         : Object.entries(fireDraft[s.id] || {}).filter(([, m]) => Object.keys(m).length).map(([arc, targets]) => ({ arc, targets }));
     }
     const msg = { type: state.phase, round: state.round, ships };
-    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; msg.rotates = { ...rotateDraft }; msg.fiveArms = { ...fiveDraft }; }
+    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; msg.rotates = { ...rotateDraft }; msg.fiveArms = { ...fiveDraft }; msg.decoys = { ...decoyDraft }; }
     return msg;
   }
 
@@ -1405,6 +1426,7 @@ export function mount({ container, me, sendInput }) {
     else if (act === 'squadCaptain') sendInput({ type: 'squadCaptain', index: Number(b.dataset.i), slot: Number(b.dataset.k), captain: b.dataset.c || null });
     else if (act === 'rotate') setRotate(Number(b.dataset.r));
     else if (act === 'fivePick') { if (b.dataset.k) fiveDraft[selShip] = b.dataset.k; else delete fiveDraft[selShip]; render(); }
+    else if (act === 'decoy') { if (decoyDraft[selShip]) delete decoyDraft[selShip]; else decoyDraft[selShip] = true; render(); }
     else if (act === 'critPick') { if (b.dataset.c) critDraft[selShip] = b.dataset.c; else delete critDraft[selShip]; render(); }
     else if (act === 'endTurn') { e.stopPropagation(); turnEnd(Number(b.dataset.d)); }
     else if (act === 'mine') { const d = moveDraft[selShip]; d.mine = !d.mine; render(); }

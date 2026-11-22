@@ -627,8 +627,10 @@ export function shipPower(ship) {
 
 export const weaponPower = (w) => WEAPONS[w.weapon].power;
 
-// Missiles a ship has left (Free Trader: 5 per game; set on the ship when the battle starts).
-export const missilesLeft = (ship) => ship.missiles ?? shipDef(ship).missiles ?? 0;
+// Limited ammo a ship has left, by key: missiles (Free Trader: 5), mineAmmo (Mine-Layer: 3),
+// cyclones (Cyclone Launcher: 1 volley). Set on the ship when the battle starts.
+export const ammoLeft = (ship, key) => ship[key] ?? shipDef(ship)[key] ?? 0;
+export const missilesLeft = (ship) => ammoLeft(ship, 'missiles');
 
 // How far a missile at (x, y) is from its target ship's hull.
 export const missileDistance = (m, target) => pointPolygonDistance(m.x, m.y, shipPolygon(target));
@@ -662,7 +664,9 @@ export function weaponTargets(ship, arc, wi, units, asteroids) {
   const w = arcWeapons(ship, arc)[wi];
   if (!w || weaponUsedUp(ship, arc, wi) || weaponOffline(ship, arc, wi)) return [];
   const wd = WEAPONS[w.weapon];
-  if (wd.missile && missilesLeft(ship) <= 0) return [];
+  if (wd.ammo && ammoLeft(ship, wd.ammo) <= 0) return [];
+  // Mine-Layer: no target, the "target" is the ship itself (the mine drops behind it).
+  if (wd.layMine) return [{ id: ship.id, self: true, dist: 0, band: 'close', squad: false, need: 1, expected: 0 }];
   const out = [];
   for (const t of units) {
     if (!t.alive || t.docked || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
@@ -685,19 +689,18 @@ export function defaultFirePlan(ship, units, asteroids) {
   const cands = [];
   for (const arc of ARCS) {
     arcWeapons(ship, arc).forEach((w, wi) => {
-      if (isOnce(w) || WEAPONS[w.weapon].missile) return; // limited ammo: only fired when the player aims it
+      if (isOnce(w) || WEAPONS[w.weapon].ammo) return; // limited ammo: only fired when the player aims it
       const t = weaponTargets(ship, arc, wi, units, asteroids)[0];
-      if (t) cands.push({ arc, wi, id: t.id, cost: weaponPower(w), value: t.expected, missile: WEAPONS[w.weapon].missile ? 1 : 0 });
+      if (t) cands.push({ arc, wi, id: t.id, cost: weaponPower(w), value: t.expected });
     });
   }
   const power = shipPower(ship);
-  const ammo = missilesLeft(ship);
   let best = { value: -1, picks: [] };
   for (let mask = 0; mask < 1 << cands.length; mask++) {
-    let cost = 0, value = 0, used = 0;
+    let cost = 0, value = 0;
     const picks = [];
-    cands.forEach((c, i) => { if (mask & (1 << i)) { cost += c.cost; value += c.value; used += c.missile; picks.push(c); } });
-    if (cost <= power && used <= ammo && value > best.value) best = { value, picks };
+    cands.forEach((c, i) => { if (mask & (1 << i)) { cost += c.cost; value += c.value; picks.push(c); } });
+    if (cost <= power && value > best.value) best = { value, picks };
   }
   return groupPicks(best.picks);
 }
@@ -715,7 +718,7 @@ function groupPicks(picks) {
 export function sanitizeFirePlan(ship, plan, units, asteroids) {
   if (!Array.isArray(plan)) return [];
   let left = shipPower(ship);
-  let ammo = missilesLeft(ship);
+  const ammoUsed = {}; // ammo key -> uses planned
   const picks = [];
   const seen = new Set();
   for (const a of plan) {
@@ -723,12 +726,13 @@ export function sanitizeFirePlan(ship, plan, units, asteroids) {
     arcWeapons(ship, a.arc).forEach((w, wi) => {
       const id = a.targets[wi];
       const key = weaponKey(a.arc, wi);
-      const missile = WEAPONS[w.weapon].missile ? 1 : 0;
-      if (!id || seen.has(key) || weaponPower(w) > left || missile > ammo) return;
+      const ak = WEAPONS[w.weapon].ammo;
+      if (!id || seen.has(key) || weaponPower(w) > left) return;
+      if (ak && (ammoUsed[ak] || 0) + 1 > ammoLeft(ship, ak)) return;
       if (!weaponTargets(ship, a.arc, wi, units, asteroids).some((t) => t.id === id)) return;
       seen.add(key);
       left -= weaponPower(w);
-      ammo -= missile;
+      if (ak) ammoUsed[ak] = (ammoUsed[ak] || 0) + 1;
       picks.push({ arc: a.arc, wi, id });
     });
   }
@@ -1128,7 +1132,13 @@ export function simulateMove(ships, plans, scenario) {
         if (m.gone || pointPolygonDistance(m.x, m.y, poly) > MINES.triggerDist) continue;
         m.gone = true;
         minesHit.push({ id: m.id, tick: k });
-        events.push({ tick: k, kind: 'mine', a: id, x: m.x, y: m.y, damage: [hit(s, m.x, m.y, MINES.damage)] });
+        const d = hit(s, m.x, m.y, MINES.damage);
+        // Hull damage from a mine also damages the Maneuvering Thrusters (if they aren't already).
+        if (MINES.thrusterCrit && d.hullLost > 0 && s.hull > 0 && !(s.crits || []).some((c) => c.id === 'thrusters')) {
+          s.crits = [...(s.crits || []), { id: 'thrusters', fresh: true }];
+          d.thrusterCrit = true;
+        }
+        events.push({ tick: k, kind: 'mine', a: id, x: m.x, y: m.y, damage: [d] });
       }
     }
     for (const s of sim) frames[s.id].push({ ...pose[s.id] });

@@ -85,7 +85,11 @@ export const ARC_DEFS = {
 //     'crit'     no damage; each hit causes 1 critical hit (Djnzuar Disruptor)
 //   noSquadrons      – can't target squadrons
 //   autoHit          – always hits, no to-hit roll (Djnzuar Disruptor)
-//   missile          – launches a missile (MISSILE): any range, uses the ship's `missiles` ammo
+//   missile          – launches `shots` missiles (MISSILE) of `damage` each: any range
+//   ammo             – limited uses: the ship's count with this key (missiles, mineAmmo, cyclones);
+//                      1 is used per firing. Never fired by the default plan.
+//   layMine          – drops a mine behind the ship instead of attacking (no target)
+//   pull / pullAlways – pulls the target this many u toward the shooter (pullAlways: even on a miss)
 //   pd             – point-defense: free, fires on its own at the nearest enemy squadron in close
 //                      range and ignores squadron agility; never aimed by the player. Its number
 //                      of shots is set per ship.
@@ -123,8 +127,15 @@ export const WEAPONS = {
     desc: 'Two quick shots in any direction.' },
   autoCannon: { name: 'Auto Cannon', arc: 'forward', reach: 'medium', power: 3, damage: 1, shots: 5,
     desc: 'A hail of five shots straight ahead (45°).' },
+  mineLayer: { name: 'Mine-Layer', arc: 'turret', reach: 'close', power: 1, damage: 0, shots: 1, layMine: true, ammo: 'mineAmmo',
+    desc: 'Drops a mine just behind the ship (3 per battle). Any ship that runs into a mine takes 3 damage, and a Maneuvering Thrusters critical if hull is hit.' },
+  grapplingHook: { name: 'Grappling Hook', arc: 'turret', reach: 'medium', power: 1, damage: 1, shots: 1, noSquadrons: true, pull: 2, pullAlways: true,
+    desc: 'Pulls the target 2 u toward this ship whether or not the shot hits. A hit also does 1 damage.' },
+  cycloneLauncher: { name: 'Cyclone Launcher', arc: 'turret', reach: 'veryLong', power: 2, damage: 1, shots: 5, ignoreShields: true, noSquadrons: true,
+    autoHit: true, missile: true, ammo: 'cyclones',
+    desc: 'Once per battle: fires 5 missiles at one enemy ship. Each always hits for 1 damage (ignores shields) unless point-defense shoots it down. Within 16 u they hit this round; farther away they fly 16 u a round.' },
   missileLauncher: { name: 'Missile Launcher', arc: 'turret', reach: 'veryLong', power: 1, damage: 2, shots: 1, ignoreShields: true, noSquadrons: true,
-    autoHit: true, missile: true,
+    autoHit: true, missile: true, ammo: 'missiles',
     desc: 'Fires a missile at any enemy ship. It always hits (2 damage, ignores shields) unless point-defense shoots it down. Within 16 u it hits this round; farther away it flies 16 u a round until it gets there. Uses 1 missile.' },
   flechette: { name: 'Flechette Gun', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
     desc: 'Point-defense: a storm of small shots against squadrons.' },
@@ -167,7 +178,9 @@ export const MISSILE = { strike: 16, speed: 16 };
 
 // Mines (rules §2): a ship that moves within `triggerDist` u takes `damage` to the hull zone facing
 // the mine, then the mine is gone. Mines are neutral. Dropped `dropBehind` u behind the ship's stern.
-export const MINES = { triggerDist: 1, damage: 3, dropBehind: 1.3 };
+// A mine that does hull damage also gives a Maneuvering Thrusters critical. The trigger distance is
+// about a small asteroid's radius.
+export const MINES = { triggerDist: 0.7, damage: 3, dropBehind: 1.3, thrusterCrit: true };
 
 const pd = (weapon, shots) => ({ weapon, shots });
 
@@ -291,6 +304,12 @@ export const UPGRADES = {
     desc: 'A stolen Dark Lance (spinal, long range, 5 damage) and +3 Power to fire it.' },
   scavengerHold: { name: 'Scavenger Hold', short: 'Hold', icon: '✈', cost: 1, ships: ['freeTrader'], squadrons: 1, carries: ['scavengers'],
     desc: 'Carries 1 squadron of Scavengers.' },
+  mineLayer: { name: 'Mine-Layer', short: 'Mines', icon: '💣', cost: 2, ships: ['rouge'], weapons: ['mineLayer'], power: 1, ammo: { mineAmmo: 3 },
+    desc: '+1 Power and a Mine-Layer (1 Power): drop a mine behind the ship, 3 per battle. A mine hits any ship for 3 damage, plus a Maneuvering Thrusters critical if hull is hit.' },
+  grapplingHook: { name: 'Grappling Hook', short: 'Hook', icon: '🪝', cost: 2, ships: ['rouge'], weapons: ['grapplingHook'], power: 1,
+    desc: '+1 Power and a Grappling Hook (1 Power, medium range, 1 damage): pulls the target 2 u closer, hit or miss.' },
+  cycloneLauncher: { name: 'Cyclone Launcher', short: 'Cyclone', icon: '🌪', cost: 3, ships: ['rouge'], weapons: ['cycloneLauncher'], power: 2, ammo: { cyclones: 1 },
+    desc: '+2 Power and a Cyclone Launcher (2 Power, once per battle): 5 missiles of 1 damage each at one enemy ship.' },
   xarTeleporter: { name: 'Xar Teleporter', short: 'Teleporter', icon: '✨', cost: 2, ships: ['freeTrader'],
     desc: 'Once per game, the Teleport stance: after everyone moves, pick any free spot on the map and a facing, and the ship jumps there (keeping its speed).' },
 };
@@ -310,6 +329,7 @@ export function defWithMods(type, mods) {
     def.weapons.push(...(u.weapons || []));
     def.power += u.power || 0;
     if (u.squadrons) { def.squadrons = (def.squadrons || 0) + u.squadrons; def.carries = [...(def.carries || []), ...(u.carries || [])]; }
+    for (const [k, n] of Object.entries(u.ammo || {})) def[k] = (def[k] || 0) + n;
   }
   def.arcs = groupArcs(def.weapons);
   return (modCache[key] = def);
@@ -342,7 +362,7 @@ export const TIMING = {
 export const DICE_COLORS = {
   torpedo: '#ffa94d', smallLaser: '#ff8787', largeLaser: '#fa5252', ion: '#8ce1ff', lance: '#da77f2',
   maw: '#ff922b', smallRail: '#74c0fc', largeRail: '#4dabf7', darkLance: '#9775fa', critDisruptor: '#e599f7', acid: '#a9e34b',
-  autoTurret: '#dee2e6', autoCannon: '#8ce99a', missileLauncher: '#ff6b6b',
+  autoTurret: '#dee2e6', autoCannon: '#8ce99a', missileLauncher: '#ff6b6b', cycloneLauncher: '#ff8787', grapplingHook: '#ffa94d', mineLayer: '#868e96',
   pd: '#ffd43b', squad: '#b197fc',
 };
 export const diceColor = (weapon, pd = false) => (pd ? DICE_COLORS.pd : DICE_COLORS[weapon] || DICE_COLORS.squad);
@@ -478,6 +498,10 @@ export const CAPTAINS = {
     desc: 'The Auto Cannon gets +1 shot and +1 accuracy.' },
   flerf: { name: 'Flerf', short: 'Flerf', icon: '⭐', cost: 3, ships: ['freeTrader'], fiveArms: true,
     desc: 'Five Arms: every round, one weapon you aim fires twice (no extra Power). You pick which in Plan Fire.' },
+  rzen: { name: 'Rzen', short: 'Rzen', icon: '🐆', cost: 2, ships: ['rouge'], killHeal: 1,
+    desc: 'Every enemy this ship attacked that is destroyed this round gives it +1 hull (not above max).' },
+  kajik: { name: 'Kaj\'ik', short: 'Kaj\'ik', icon: '🐸', cost: 2, ships: ['firefly'], decoy: true,
+    desc: 'Decoy Beacon: once per game, in Plan Fire, drop a decoy where the Firefly is. Enemy missiles and squadrons attacking a friendly ship within close range of it hit the decoy instead. One hit destroys it.' },
 };
 export const CAPTAIN_ORDER = Object.keys(CAPTAINS);
 
