@@ -5,14 +5,14 @@ import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, CLASSES, WEAPONS, ZONES, ARCS, ARC_DEFS, ZONE_NAMES, RANGE_BANDS, SHIPS, FLEET,
   STANCES, CRITICALS, SQUADRONS, SQUADRON_ROLES, SQUADRON, SQUAD_ORDERS, SQUAD_ORDER_LIST,
-  HIT, SPECIALS, CAPTAINS, CRIT_POOL, UPGRADES,
+  HIT, SPECIALS, CAPTAINS, CRIT_POOL, UPGRADES, MISSILE,
 } from './data.js';
 import {
   classOf, shipDef, corners, speedOptions, maxClicks, segmentClicks, defaultMovePlan, planWaypoints, pathHazard,
   weaponTargets, weaponUsedUp, defaultFirePlan, arcWeapons, factionShipTypes, pointShare, fleetCost, buyProblem,
   stanceOptions, shipStances, maxSpeed, isSquad, squadDef, unitName, endTurnClicks, weaponOffline, boostCap,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
-  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus, upgradeChoices, upgradeProblem,
+  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus, upgradeChoices, upgradeProblem, missilesLeft,
   captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
 } from './rules.js';
 import { faceImg } from './portraits.js';
@@ -133,6 +133,7 @@ export function mount({ container, me, sendInput }) {
       out.push(`Stance this round: ${s.stance.wild ? `${STANCES.wild.icon} ${STANCES.wild.name} + ` : ''}${st.icon} ${escapeHtml(st.name)}${s.stance.zone ? ` (${ZONE_NAMES[s.stance.zone]})` : ''}`);
     }
     if (captainOf(s)) out.push(`${captainHtml(s)}: ${escapeHtml(captainOf(s).desc)}`);
+    if (shipDef(s).missiles) out.push(`🚀 Missiles: ${missilesLeft(s)}/${shipDef(s).missiles} left`);
     if (captainOf(s)?.stubborn) out.push(s.lastStand ? '🔨 Too Stubborn to Die: saved this round, no more damage until next round' : s.stubbornUsed ? '🔨 Too Stubborn to Die: used' : '🔨 Too Stubborn to Die: ready');
     for (const m of s.mods || []) out.push(`${UPGRADES[m].icon} ${escapeHtml(UPGRADES[m].name)}: ${escapeHtml(UPGRADES[m].desc)}`);
     for (const c of s.crits || []) {
@@ -384,9 +385,11 @@ export function mount({ container, me, sendInput }) {
   function rollRow(r, i) {
     const shown = i < rollShown;
     const tumbling = !shown && i === rollShown && rollStage === 'rolling';
-    const kind = r.kind === 'pd' ? (r.first ? '🛡 Point-defense (fires first) · ' : '🛡 Point-defense (automatic) · ') : r.kind === 'squad' ? '✈ ' : '';
+    const kind = r.kind === 'pd' ? (r.first ? '🛡 Point-defense (fires first) · ' : '🛡 Point-defense (automatic) · ') : r.kind === 'squad' ? '✈ ' : r.kind === 'missile' ? '🚀 ' : '';
     const notes = [];
-    if (r.lost) notes.push(`🛡 ${r.lost} craft shot down by point-defense before firing`);
+    if (r.flight) notes.push(`🚀 Launched: too far to hit this round. It flies ${MISSILE.speed} u a round and hits in about ${r.flight} round${r.flight === 1 ? '' : 's'}.`);
+    if (r.kind === 'missile' && !r.flight) notes.push('Missiles always hit unless point-defense shoots them down.');
+    if (r.lost && r.kind !== 'missile') notes.push(`🛡 ${r.lost} craft shot down by point-defense before firing`);
     if (r.oneRun) notes.push('💣 One bombing run: then they fly back to re-arm');
     const crit = r.critOn ? `<small> · crit ${r.critOn}${r.critOn < 10 ? '+' : ''}</small>` : '';
     const auto = r.need <= 1; // auto-hit weapon (Disruptor): no roll needed
@@ -394,8 +397,10 @@ export function mount({ container, me, sendInput }) {
       ? `<span class="sbp-die ${res}">${auto ? '✓' : v}</span>`
       : `<span class="sbp-die ${tumbling ? 'tumble' : 'blank'}">${tumbling ? 1 + Math.floor(Math.random() * 10) : ''}</span>`)).join('');
     let verdict = '';
-    if (shown && !r.dice.length) {
-      verdict = '<span class="sbp-verdict miss">Shot down!</span>'; // every craft lost before firing
+    if (shown && r.flight) {
+      verdict = '<span class="sbp-verdict hit">In flight</span>';
+    } else if (shown && !r.dice.length) {
+      verdict = '<span class="sbp-verdict miss">Shot down!</span>'; // every craft (or the missile) lost before firing
     } else if (shown) {
       const v = verdictOf(r);
       const hits = r.dice.filter((d) => d[1] !== 'miss').length;
@@ -691,7 +696,7 @@ export function mount({ container, me, sendInput }) {
     const pack = packBonus(s, units());
     const packNote = pack ? `<p class="sbp-burn">${faceImg('bossim', 22)} Bossim's Pack Leader: all weapons +${pack} accuracy.</p>` : '';
     const pd = shipDef(s).pd.length
-      ? '<p class="sbp-small muted">Point-defense is free and fires on its own. It shoots first at squadrons attacking this ship (craft it downs never fire), otherwise at the nearest enemy squadron in close range. Its yellow dice show up when you tap Fire!</p>' : '';
+      ? '<p class="sbp-small muted">Point-defense is free and fires on its own. It shoots first at squadrons and missiles attacking this ship (splitting its shots between them; whatever it downs never fires), otherwise at the nearest enemy squadron in close range. Its yellow dice show up when you tap Fire!</p>' : '';
     return (notes.length ? `<p class="sbp-burn">${st.icon} ${escapeHtml(name)}: ${escapeHtml(notes.join('; '))}.</p>` : '') + packNote + amelia + pd;
   }
 
@@ -798,6 +803,7 @@ export function mount({ container, me, sendInput }) {
         ${shipTabs()}
         <div class="sbp-shipname"><b>${escapeHtml(shipDef(s).name)}${s.letter ? ` ${s.letter}` : ""}</b> <small class="muted">each weapon picks its own target</small></div>
         <div class="sbp-power"><b>⚡ Power ${used}/${power}</b><span class="sbp-power-bar">${Array.from({ length: Math.max(power, used) }, (_, i) => `<i class="${i < used ? 'on' : ''}"></i>`).join('')}</span><small>${power - used > 0 ? `${power - used} unused (wasted)` : 'all used'}</small></div>
+        ${shipDef(s).missiles ? `<div class="sbp-power"><b>🚀 Missiles ${missilesLeft(s)}/${shipDef(s).missiles}</b><span class="sbp-power-bar">${Array.from({ length: shipDef(s).missiles }, (_, i) => `<i class="${i < missilesLeft(s) ? 'on' : ''}"></i>`).join('')}</span><small>${missilesAimed(s, draftPlan(s.id)) ? `${missilesAimed(s, draftPlan(s.id))} launching this round` : 'left for the battle'}</small></div>` : ''}
         ${fireStanceNote(s)}
         ${rotatePicker(s)}
         ${repairPicker(s)}
@@ -825,7 +831,7 @@ export function mount({ container, me, sendInput }) {
                         const sel = chosen === t.id;
                         return `<button class="sbp-target ${sel ? 'on' : ''} ${rowIndex(arc, wi, t.id) === selRow ? 'cursor' : ''}" data-act="target" data-arc="${arc}" data-wi="${wi}" data-id="${t.id}">
                           <span><span class="dot" style="background:${person(ts.owner).color}"></span>${isSquad(ts) ? '✈ ' : ''}${escapeHtml(unitName(ts))} <small>${escapeHtml(person(ts.owner).name)}</small></span>
-                          <span>${BAND_NAMES[t.band]} · ${t.need <= 1 ? 'always hits' : `hits on ${Math.min(t.need, HIT.die)}+`} ·≈${t.expected.toFixed(1)} ${unit} ${sel ? '✔' : ''}</span></button>`;
+                          <span>${wd.missile ? `${t.dist.toFixed(0)} u · ${t.dist <= MISSILE.strike ? 'hits this round' : `arrives in ~${1 + Math.ceil((t.dist - MISSILE.strike) / MISSILE.speed)} rounds`} · 2 dmg unless shot down` : `${BAND_NAMES[t.band]} · ${t.need <= 1 ? 'always hits' : `hits on ${Math.min(t.need, HIT.die)}+`} ·≈${t.expected.toFixed(1)} ${unit}`} ${sel ? '✔' : ''}</span></button>`;
                       }).join('')}
                       <button class="sbp-target hold ${chosen ? '' : 'on'} ${rowIndex(arc, wi, null) === selRow ? 'cursor' : ''}" data-act="target" data-arc="${arc}" data-wi="${wi}" data-id="">
                         <span>${wd.once ? 'Hold (save it for later)' : 'Hold fire'}</span><span>${chosen ? '' : '✔'}</span></button>`
@@ -1164,6 +1170,9 @@ export function mount({ container, me, sendInput }) {
     setStance(opts[(i + dir + opts.length) % opts.length]);
   }
 
+  // Missile Launchers aimed in a fire plan (each uses 1 missile).
+  const missilesAimed = (s, plan) => plan.reduce((n, a) => n + Object.keys(a.targets).filter((wi) => WEAPONS[arcWeapons(s, a.arc)[wi]?.weapon]?.missile).length, 0);
+
   // Aim one weapon at a target (tapping the same target again, or Hold, holds its fire).
   function pickTarget(arc, wi, targetId) {
     const draft = fireDraft[selShip];
@@ -1176,8 +1185,11 @@ export function mount({ container, me, sendInput }) {
       const s = shipById(selShip);
       const others = draftPlan(selShip).map((a) => ({ arc: a.arc, targets: Object.fromEntries(Object.entries(a.targets).filter(([k]) => !(a.arc === arc && Number(k) === wi))) }));
       const need = planPower(s, others) + weaponPower(arcWeapons(s, arc)[wi]);
+      const isMissile = WEAPONS[arcWeapons(s, arc)[wi].weapon].missile;
       if (need > shipPower(s)) {
         notice = `Not enough power (${need}/${shipPower(s)}). Set another weapon to Hold first.`;
+      } else if (isMissile && missilesAimed(s, others) + 1 > missilesLeft(s)) {
+        notice = `Only ${missilesLeft(s)} missile${missilesLeft(s) === 1 ? '' : 's'} left.`;
       } else {
         (draft[arc] || (draft[arc] = {}))[wi] = targetId;
       }

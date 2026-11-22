@@ -244,6 +244,7 @@ export const inReach = (wd, band) => !!band && bandIndex(band) <= bandIndex(wd.r
 
 // Chance one shot of `wd` from `attacker` hits `target` at `band` (0 if it can't fire at it).
 export function hitChance(attacker, wd, band, target, units = []) {
+  if (wd.missile) return isSquad(target) ? 0 : 1; // missiles reach anywhere and always hit (unless PD stops them)
   if (!inReach(wd, band)) return 0;
   if (isSquad(target) && wd.noSquadrons) return 0;
   return chanceOf(needToHit(attacker, wd, target, units));
@@ -608,6 +609,12 @@ export function shipPower(ship) {
 
 export const weaponPower = (w) => WEAPONS[w.weapon].power;
 
+// Missiles a ship has left (Free Trader: 5 per game; set on the ship when the battle starts).
+export const missilesLeft = (ship) => ship.missiles ?? shipDef(ship).missiles ?? 0;
+
+// How far a missile at (x, y) is from its target ship's hull.
+export const missileDistance = (m, target) => pointPolygonDistance(m.x, m.y, shipPolygon(target));
+
 // Power a fire plan uses: [{ arc, targets: { [weaponIndex]: targetId } }].
 export function planPower(ship, plan) {
   let n = 0;
@@ -637,13 +644,15 @@ export function weaponTargets(ship, arc, wi, units, asteroids) {
   const w = arcWeapons(ship, arc)[wi];
   if (!w || weaponUsedUp(ship, arc, wi) || weaponOffline(ship, arc, wi)) return [];
   const wd = WEAPONS[w.weapon];
+  if (wd.missile && missilesLeft(ship) <= 0) return [];
   const out = [];
   for (const t of units) {
     if (!t.alive || t.docked || !isEnemy(ship, t) || !inArc(ship, arc, t)) continue;
     const dist = unitDistance(ship, t);
     const band = rangeBand(dist);
     if (!hitChance(ship, wd, band, t, units)) continue;
-    if (!isSquad(t) && !lineOfSight(ship, t, asteroids)) continue;
+    // Missiles fly around asteroids; squadrons fly over them.
+    if (!isSquad(t) && !wd.missile && !lineOfSight(ship, t, asteroids)) continue;
     out.push({ id: t.id, dist, band, squad: isSquad(t), need: needToHit(ship, wd, t, units), expected: expectedWeaponDamage(ship, w, band, t, units) });
   }
   return out.sort((a, b) => a.dist - b.dist);
@@ -658,18 +667,19 @@ export function defaultFirePlan(ship, units, asteroids) {
   const cands = [];
   for (const arc of ARCS) {
     arcWeapons(ship, arc).forEach((w, wi) => {
-      if (isOnce(w)) return;
+      if (isOnce(w) || WEAPONS[w.weapon].missile) return; // limited ammo: only fired when the player aims it
       const t = weaponTargets(ship, arc, wi, units, asteroids)[0];
-      if (t) cands.push({ arc, wi, id: t.id, cost: weaponPower(w), value: t.expected });
+      if (t) cands.push({ arc, wi, id: t.id, cost: weaponPower(w), value: t.expected, missile: WEAPONS[w.weapon].missile ? 1 : 0 });
     });
   }
   const power = shipPower(ship);
+  const ammo = missilesLeft(ship);
   let best = { value: -1, picks: [] };
   for (let mask = 0; mask < 1 << cands.length; mask++) {
-    let cost = 0, value = 0;
+    let cost = 0, value = 0, used = 0;
     const picks = [];
-    cands.forEach((c, i) => { if (mask & (1 << i)) { cost += c.cost; value += c.value; picks.push(c); } });
-    if (cost <= power && value > best.value) best = { value, picks };
+    cands.forEach((c, i) => { if (mask & (1 << i)) { cost += c.cost; value += c.value; used += c.missile; picks.push(c); } });
+    if (cost <= power && used <= ammo && value > best.value) best = { value, picks };
   }
   return groupPicks(best.picks);
 }
@@ -687,6 +697,7 @@ function groupPicks(picks) {
 export function sanitizeFirePlan(ship, plan, units, asteroids) {
   if (!Array.isArray(plan)) return [];
   let left = shipPower(ship);
+  let ammo = missilesLeft(ship);
   const picks = [];
   const seen = new Set();
   for (const a of plan) {
@@ -694,10 +705,12 @@ export function sanitizeFirePlan(ship, plan, units, asteroids) {
     arcWeapons(ship, a.arc).forEach((w, wi) => {
       const id = a.targets[wi];
       const key = weaponKey(a.arc, wi);
-      if (!id || seen.has(key) || weaponPower(w) > left) return;
+      const missile = WEAPONS[w.weapon].missile ? 1 : 0;
+      if (!id || seen.has(key) || weaponPower(w) > left || missile > ammo) return;
       if (!weaponTargets(ship, a.arc, wi, units, asteroids).some((t) => t.id === id)) return;
       seen.add(key);
       left -= weaponPower(w);
+      ammo -= missile;
       picks.push({ arc: a.arc, wi, id });
     });
   }

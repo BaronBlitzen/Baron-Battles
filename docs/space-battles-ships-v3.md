@@ -218,9 +218,9 @@ When a side has more than one ship of the same type, they're labeled **A, B, C�
 - Small assumptions still marked ⚠ above: one shot per weapon, Torpedo + Targeted Attack don't
   stack (still 9–10), and a ship can pick no stance.
 
-## Pirates ✅ (rework, step 1 of 3)
+## Pirates ✅ (rework, steps 1–2 of 3)
 
-Steps 2 (missiles) and 3 (Xar Teleporter) are still to come. The Outrider and the old Pirate "home"
+Step 3 (Xar Teleporter) is still to come. The Outrider and the old Pirate "home"
 rule (extra speed change at half hull) are removed. The old Pirate weapons (Autocannon Turret,
 Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 
@@ -231,7 +231,7 @@ Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 | Auto Turret | 2 | Medium | Turret 360° | 1 × 2 shots | |
 | Auto Cannon | 3 | Medium | **Forward 45°** (new arc, ±22.5°) | 1 × 5 shots | |
 | Flechette Gun | free | Close | Turret | 1 | Point-defense. |
-| Missile Launcher | 1 | — | 360° | 2, ignores shields | **Step 2 (not built yet).** 5 missiles per Free Trader. Always hits unless point-defense shoots it down (1 hp). Hits the same round if the target is within 16 u, otherwise keeps flying 16 u a round. |
+| Missile Launcher | 1 | Any | 360° | 2, ignores shields | ✅ 5 missiles per Free Trader (shown under Power on the phone). Never fired by the default plan: only when the player aims it. Missiles fly around asteroids. Always hits unless point-defense shoots it down (1 hp). Hits the same round if the target is within 16 u, otherwise keeps flying 16 u a round. |
 
 ### Ships
 
@@ -239,7 +239,7 @@ Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 |---|---|---|---|---|---|---|---|---|---|
 | Firefly | Corvette | 9 | 8 | 1/1/1/0 | 2 | 1–4 | 3/3/3/2 | Auto Turret | Flechette ×1 |
 | Rouge | Corvette | 12 | 6 | 2/2/2/1 | 4 | 2–5 | 3/3/2/2 | Auto Cannon, Auto Turret | Flechette ×1 |
-| Free Trader | Cruiser | 14 | 9 | 2/2/2/1 | 5 | 1–4 | 3/2/1/1 | Auto Turret ×2 (Missile Launcher ×2 in step 2) | Flechette ×2 |
+| Free Trader | Cruiser | 14 | 9 | 2/2/2/1 | 5 | 1–4 | 3/2/1/1 | Auto Turret ×2, Missile Launcher ×2 | Flechette ×2 |
 
 - Rouge: 4 Power can't fire the Auto Cannon (3) and the Auto Turret (2) together.
 - Turning: Firefly like the Torpedo Boat, Rouge like the Samurai, Free Trader like the Escort.
@@ -271,6 +271,6 @@ Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 
 ### Point-defense split (all factions) ✅
 
-When several squadrons (or, later, missiles) attack the same ship, its point-defense shots are split
+When several squadrons or missiles attack the same ship, its point-defense shots are split
 between them, nearest first, taking turns (3 shots at 2 attackers = 2 + 1). Those shots still land
 before the attackers fire.

@@ -85,6 +85,7 @@ export const ARC_DEFS = {
 //     'crit'     no damage; each hit causes 1 critical hit (Djnzuar Disruptor)
 //   noSquadrons      – can't target squadrons
 //   autoHit          – always hits, no to-hit roll (Djnzuar Disruptor)
+//   missile          – launches a missile (MISSILE): any range, uses the ship's `missiles` ammo
 //   pd             – point-defense: free, fires on its own at the nearest enemy squadron in close
 //                      range and ignores squadron agility; never aimed by the player. Its number
 //                      of shots is set per ship.
@@ -122,6 +123,9 @@ export const WEAPONS = {
     desc: 'Two quick shots in any direction.' },
   autoCannon: { name: 'Auto Cannon', arc: 'forward', reach: 'medium', power: 3, damage: 1, shots: 5,
     desc: 'A hail of five shots straight ahead (45°).' },
+  missileLauncher: { name: 'Missile Launcher', arc: 'turret', reach: 'veryLong', power: 1, damage: 2, shots: 1, ignoreShields: true, noSquadrons: true,
+    autoHit: true, missile: true,
+    desc: 'Fires a missile at any enemy ship. It always hits (2 damage, ignores shields) unless point-defense shoots it down. Within 16 u it hits this round; farther away it flies 16 u a round until it gets there. Uses 1 missile.' },
   flechette: { name: 'Flechette Gun', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
     desc: 'Point-defense: a storm of small shots against squadrons.' },
 };
@@ -155,6 +159,11 @@ export const SPECIALS = {
   smugglersHold: { name: 'Smuggler\'s Hold', icon: '📦', uses: 1, hull: 2,
     desc: 'Once per game, end of round: restore 2 hull or remove 1 critical, on this ship or a friendly ship in close range.' },
 };
+
+// Missiles (Pirate Missile Launcher): a missile strikes in the Fire phase if its target ship is
+// within `strike` u; otherwise it flies `speed` u toward the target at the end of the round and
+// tries again next round. Only point-defense can shoot at it (any hit destroys it).
+export const MISSILE = { strike: 16, speed: 16 };
 
 // Mines (rules §2): a ship that moves within `triggerDist` u takes `damage` to the hull zone facing
 // the mine, then the mine is gone. Mines are neutral. Dropped `dropBehind` u behind the ship's stern.
@@ -257,7 +266,7 @@ export const SHIPS = {
     ratings: { o: 3, d: 3, m: 3, u: 4 },
     desc: 'A patched-up freighter full of guns. Customize it in the shipyard.',
     hull: 9, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 5,
-    weapons: ['autoTurret', 'autoTurret'], pd: [pd('flechette', 2)],
+    weapons: ['autoTurret', 'autoTurret', 'missileLauncher', 'missileLauncher'], pd: [pd('flechette', 2)], missiles: 5,
   },
 };
 
@@ -329,7 +338,7 @@ export const TIMING = {
 export const DICE_COLORS = {
   torpedo: '#ffa94d', smallLaser: '#ff8787', largeLaser: '#fa5252', ion: '#8ce1ff', lance: '#da77f2',
   maw: '#ff922b', smallRail: '#74c0fc', largeRail: '#4dabf7', darkLance: '#9775fa', critDisruptor: '#e599f7', acid: '#a9e34b',
-  autoTurret: '#dee2e6', autoCannon: '#8ce99a',
+  autoTurret: '#dee2e6', autoCannon: '#8ce99a', missileLauncher: '#ff6b6b',
   pd: '#ffd43b', squad: '#b197fc',
 };
 export const diceColor = (weapon, pd = false) => (pd ? DICE_COLORS.pd : DICE_COLORS[weapon] || DICE_COLORS.squad);

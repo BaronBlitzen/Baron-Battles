@@ -5,7 +5,7 @@ import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, WEAPONS, SHIPS, SCENARIOS, TIMING, ZONES, MISSIONS, FLEET, STANCES,
   CRITICALS, CRIT_POOL, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS, HIT, SPECIALS, BATTLE_SIZES, CAPTAINS, diceColor,
-  UPGRADES,
+  UPGRADES, MISSILE,
 } from './data.js';
 import {
   classOf, shipDef, simulateMove, sanitizeMovePlan, defaultMovePlan, sanitizeFirePlan,
@@ -14,7 +14,7 @@ import {
   applyHullDamage, pullToward, stanceDamage, sanitizeRepair, applyRepair, shieldsOff,
   absorbableShields, maxSpeed, critCount, isSquad, squadDef, SQUAD_R, unitDistance,
   needToHit, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTargets, latchTarget,
-  weaponShots, upgradeProblem, upgradeChoices, carrierSlots, tryLastStand,
+  weaponShots, upgradeProblem, upgradeChoices, carrierSlots, tryLastStand, missilesLeft, missileDistance,
   launchSpot, canDock, mineSpot, sanitizeHold, sizeRules, sizeForPlayers,
   squadBuyProblem, killValue, applySquadHits, critOnOf, boostCap,
   captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName, sanitizeRotate, rotatedShip,
@@ -58,7 +58,7 @@ const publicShip = (s) => ({
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
   specialUsed: s.specialUsed || 0, boost: s.boost ? { ...s.boost } : null,
   captain: s.captain || null, letter: s.letter || '', mods: [...(s.mods || [])],
-  stubbornUsed: !!s.stubbornUsed, lastStand: !!s.lastStand,
+  stubbornUsed: !!s.stubbornUsed, lastStand: !!s.lastStand, missiles: s.missiles || 0,
 });
 
 // Position and heading are set by deploy().
@@ -67,7 +67,7 @@ function makeShip(id, type, owner, captain = null, mods = []) {
   const s = {
     id, type, faction: def.faction, owner, x: 0, y: 0, heading: 0, captain: CAPTAINS[captain] ? captain : null,
     mods: (mods || []).filter((m) => UPGRADES[m]?.ships.includes(type)),
-    speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true, specialUsed: 0,
+    speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true, specialUsed: 0, missiles: def.missiles || 0,
   };
   s.hull = maxHull(s);
   return s;
@@ -185,6 +185,10 @@ export function start({ container, players, setPhoneState, onExit }) {
   let rotatePlans = {}; // playerId -> { shipId: clicks } (Kairos turns before shooting)
   let fivePlans = {}; // playerId -> { shipId: "arc:index" } (Flerf's Five Arms: that weapon fires twice)
   let mines = []; // [{ id, x, y }] dropped by Mine Drop (neutral)
+  // Missiles in flight: { id, kind: 'missile', owner, faction, from (launcher id), target (ship id),
+  // x, y, alive, fresh (launched this round) }.
+  let missiles = [];
+  let missileCount = 0;
   let mineCount = 0;
   let anim = null;
   let rollData = null; // Roll Dice phase: the attacks already rolled, waiting to be shown
@@ -232,6 +236,9 @@ export function start({ container, players, setPhoneState, onExit }) {
   // Ships and squadrons together (anything that can be targeted or drawn).
   const units = () => [...ships, ...squads];
   const unitById = (id) => ships.find((s) => s.id === id) || squads.find((q) => q.id === id);
+  // Ships, squadrons or missiles (missiles are never targets of normal weapons).
+  const anyUnit = (id) => unitById(id) || missiles.find((m) => m.id === id);
+  const anyName = (u) => (u?.kind === 'missile' ? `Missile from ${unitName(unitById(u.from))}` : unitName(u));
   // Kill points: the other team scores a destroyed unit's value.
   const credit = (u) => {
     const other = battleFactions.find((f) => f !== u.faction);
@@ -310,6 +317,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       map,
       asteroids,
       mines: mines.map((m) => ({ ...m })),
+      missiles: missiles.filter((m) => m.alive).map((m) => ({ id: m.id, owner: m.owner, faction: m.faction, target: m.target, x: m.x, y: m.y })),
       factions: battleFactions,
       people: Object.fromEntries(order.map((id) => [id, { name: nameOf(id), color: colorOf(id) }])),
       teams: { ...teams },
@@ -494,6 +502,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     assignLetters(squads);
     kills = Object.fromEntries(battleFactions.map((f) => [f, 0]));
     mines = [];
+    missiles = [];
     ready = {};
     phase = 'intro';
     phaseEndsAt = now() + TIMING.introMs;
@@ -798,6 +807,9 @@ export function start({ container, players, setPhoneState, onExit }) {
       s.heading = rotatedShip(s, rot).heading;
       turned.push([s.id, rot]);
     }
+    // Missiles whose target is gone fizzle out; the rest keep flying.
+    missiles = missiles.filter((m) => m.alive && unitById(m.target)?.alive);
+    for (const m of missiles) m.fresh = false;
     const all = units();
     const attacks = [];
     const firstStrike = []; // point-defense shots at squadrons attacking that ship: they land first
@@ -834,30 +846,73 @@ export function start({ container, players, setPhoneState, onExit }) {
           // Exterminate / Reckless Attack / Five Arms: the weapon fires again (separate attacks).
           const extra = five === weaponKey(a.arc, wi) && !onceKey ? 1 : 0;
           for (let n = weaponRepeats(s, w) + extra; n > 0; n--) {
+            if (WEAPONS[w.weapon].missile) {
+              // Missile Launcher: launch a missile (uses 1 of the ship's missiles). It strikes below.
+              if (missilesLeft(s) <= 0) break;
+              s.missiles = missilesLeft(s) - 1;
+              missiles.push({ id: `x${++missileCount}`, kind: 'missile', owner: s.owner, faction: s.faction, from: s.id, target: t.id, x: s.x, y: s.y, alive: true, fresh: true });
+              continue;
+            }
             attacks.push({ from: s.id, to: t.id, arc: a.arc, onceKey, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w) });
           }
         }
       }
-      // Point-defense fires on its own (free, not changed by stances or criticals). If squadrons are
-      // attacking this ship, its shots are split between them (nearest first, taking turns) and land
-      // before they fire; otherwise all go at the nearest enemy squadron in close range.
+    }
+    // Missiles within MISSILE.strike u of their target strike this round; the rest fly closer.
+    const striking = missiles.filter((m) => missileDistance(m, unitById(m.target)) <= MISSILE.strike);
+    // Point-defense fires on its own (free, not changed by stances or criticals). If squadrons or
+    // missiles are attacking a ship, its shots are split between them (squadrons nearest first, then
+    // missiles, taking turns) and land before they fire; otherwise all go at the nearest enemy
+    // squadron in close range.
+    for (const s of ships) {
+      if (!s.alive || !shipDef(s).pd.length) continue;
       const attackers = squads.filter((q) => squadTargets[q.id]?.id === s.id);
       const pd = pdTargets(s, squads, attackers);
-      if (pd) {
-        for (const w of shipDef(s).pd) {
-          const per = pd.targets.map(() => 0);
-          for (let k = 0; k < w.shots; k++) per[k % per.length]++;
-          pd.targets.forEach((t, j) => {
-            if (per[j]) (pd.first ? firstStrike : attacks).push({ from: s.id, to: t.id, zone: null, pd: true, first: pd.first, ...rollWeapon(s, t, w, per[j]) });
-          });
-        }
+      const incoming = striking.filter((m) => m.target === s.id).sort((a, b) => missileDistance(a, s) - missileDistance(b, s));
+      let targets, first;
+      if (pd?.first || incoming.length) { targets = [...(pd?.first ? pd.targets : []), ...incoming]; first = true; }
+      else if (pd) { targets = pd.targets; first = false; }
+      else continue;
+      for (const w of shipDef(s).pd) {
+        const per = targets.map(() => 0);
+        for (let k = 0; k < w.shots; k++) per[k % per.length]++;
+        targets.forEach((t, j) => {
+          if (!per[j]) return;
+          if (t.kind === 'missile') {
+            // One hit destroys a missile; it hits on HIT.base+ like point-defense against squadrons.
+            const r = rollShots(per[j], HIT.base, HIT.critOn, false);
+            firstStrike.push({ from: s.id, to: t.id, zone: null, pd: true, first: true, atMissile: true, band: 'close', shots: per[j], need: HIT.base, critOn: null, dice: r.dice, hits: r.hits, crits: r.crits, perHit: 1, ignoreShields: false, effect: null, weapon: w.weapon });
+          } else (first ? firstStrike : attacks).push({ from: s.id, to: t.id, zone: null, pd: true, first, ...rollWeapon(s, t, w, per[j]) });
+        });
       }
+    }
+    // Missile strikes: shot down by point-defense, or 2 damage that ignores shields (no roll).
+    const downed = new Set(firstStrike.filter((a) => a.atMissile && a.hits > 0).map((a) => a.to));
+    const missileMoves = {};
+    for (const m of missiles) {
+      const t = unitById(m.target);
+      if (striking.includes(m)) {
+        const base = { from: m.id, to: t.id, missile: true, zone: zoneFacing(t, m.x, m.y), band: 'close', need: 1, critOn: null, perHit: WEAPONS.missileLauncher.damage, ignoreShields: true, effect: null, weapon: 'missileLauncher' };
+        attacks.push(downed.has(m.id)
+          ? { ...base, shots: 0, lost: 1, dice: [], hits: 0, crits: [] }
+          : { ...base, shots: 1, dice: [[HIT.die, 'hit']], hits: 1, crits: [false] });
+        continue;
+      }
+      // Still too far: fly up to MISSILE.speed u straight at the target (stopping just short of it).
+      const d = Math.hypot(t.x - m.x, t.y - m.y);
+      const step = Math.min(MISSILE.speed, Math.max(0, d - 0.5));
+      const to = d > 0 ? { x: m.x + ((t.x - m.x) / d) * step, y: m.y + ((t.y - m.y) / d) * step } : { x: m.x, y: m.y };
+      missileMoves[m.id] = { from: { x: m.x, y: m.y }, to };
+      const left = missileDistance({ ...m, ...to }, t);
+      const rounds = left <= MISSILE.strike ? 1 : 1 + Math.ceil((left - MISSILE.strike) / MISSILE.speed);
+      attacks.push({ from: m.id, to: t.id, missile: true, flight: rounds, zone: null, shots: 0, dice: [], hits: 0, crits: [], need: 1, critOn: null, perHit: 0, weapon: 'missileLauncher' });
     }
     // Work out which attacking craft that point-defense shoots down before they can fire (same
     // order and rules as resolveFire, where these shots are also applied first).
     const left = Object.fromEntries(squads.map((q) => [q.id, cloneSquad(q)]));
     const dodged = new Set();
     for (const a of firstStrike) {
+      if (a.atMissile) continue; // shots at missiles are handled with the missiles below
       const q = left[a.to];
       let hits = a.hits;
       if (hits > 0 && captainOf(q)?.ignoreFirstHit && !dodged.has(q.id)) { dodged.add(q.id); hits--; }
@@ -877,21 +932,22 @@ export function start({ container, players, setPhoneState, onExit }) {
     const pub = [];
     const rowByKey = {};
     for (const a of attacks) {
-      if (!a.shots && !a.lost) continue;
-      const from = unitById(a.from), to = unitById(a.to);
+      if (!a.shots && !a.lost && !a.flight) continue;
+      const from = anyUnit(a.from), to = anyUnit(a.to);
       const key = [a.from, a.to, a.weapon, a.pd, a.first, a.need, a.critOn].join('|');
       if (rowByKey[key]) { rowByKey[key].dice.push(...a.dice); continue; }
       pub.push(rowByKey[key] = {
-        owner: from.owner, from: unitName(from), to: unitName(to),
+        owner: from.owner, from: anyName(from), to: anyName(to),
         weapon: a.weapon ? WEAPONS[a.weapon].name : squadDef(from).weapon || 'Guns',
-        kind: a.pd ? 'pd' : isSquad(from) ? 'squad' : 'weapon', color: a.color,
+        kind: a.pd ? 'pd' : a.missile ? 'missile' : isSquad(from) ? 'squad' : 'weapon', color: a.color,
         need: Math.min(HIT.die, a.need), critOn: a.critOn, dice: [...a.dice],
-        first: !!a.first, lost: a.lost || 0,
+        first: !!a.first, lost: a.lost || 0, flight: a.flight || 0,
         oneRun: isSquad(from) && !isSquad(to) && !!squadDef(from).oneRun,
       });
     }
-    const shotDown = Object.fromEntries(attacks.filter((a) => a.lost).map((a) => [a.from, a.lost]));
-    rollData = { attacks: attacks.filter((a) => a.shots > 0), turned, shotDown }; // shot-down squadrons don't fire
+    // Squadrons that lost craft to point-defense before firing (missiles shot down are shown apart).
+    const shotDown = Object.fromEntries(attacks.filter((a) => a.lost && !a.missile).map((a) => [a.from, a.lost]));
+    rollData = { attacks: attacks.filter((a) => a.shots > 0), turned, shotDown, missileMoves, downed, striking: new Set(striking.map((m) => m.id)) };
     rollPublic = { round, attacks: pub };
     rolled = {};
     // Players with nothing to roll don't hold anyone up.
@@ -916,7 +972,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   function resolveFire() {
-    const { attacks, turned, shotDown } = rollData;
+    const { attacks, turned, shotDown, missileMoves, downed, striking } = rollData;
     rollData = null;
     // All attacks land together on copies, so a ship destroyed now still fired.
     const next = ships.map(clone);
@@ -948,6 +1004,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     const grappledBy = {}; // target id -> first attacker that grappled it
     const shrugged = new Set(); // Iceman Flaggs squadrons that already ignored a hit this round
     for (const a of attacks) {
+      if (a.atMissile) continue; // point-defense at a missile: already worked out in startRoll
       const target = nextById[a.to];
       if (isSquad(target)) {
         // Squadrons: each hit knocks off a craft's shield or destroys a craft (hull = craft).
@@ -1150,10 +1207,25 @@ export function start({ container, players, setPhoneState, onExit }) {
       const step = Math.min(90, 300 / Math.max(1, a.dice.length));
       a.bolts = a.dice.map(([, res], j) => ({ at: a.at + j * step, res, side: (j % 2 ? 1 : -1) * (0.9 + Math.random() * 0.8) }));
     });
+    // Missiles: the ones that struck or were shot down vanish when their bolt (or the point-defense
+    // bolt that got them) leaves; the rest fly on toward their target during the animation.
+    const missileGoneAt = {};
+    for (const a of attacks) {
+      if (a.missile) missileGoneAt[a.from] = a.at;
+      if (a.atMissile && a.hits > 0) missileGoneAt[a.to] = Math.min(missileGoneAt[a.to] ?? Infinity, a.at + BOLT_MS);
+    }
+    for (const m of missiles) {
+      if (striking.has(m.id)) {
+        m.alive = false;
+        if (downed.has(m.id)) tag(m.id, '💥 Missile shot down', '#ffd43b', missileGoneAt[m.id] ?? landAt);
+        if (missileGoneAt[m.id] === undefined) missileGoneAt[m.id] = t0 + 200;
+      } else if (missileMoves[m.id]) Object.assign(m, missileMoves[m.id].to);
+    }
     anim = {
       kind: 'fire', start: t0, end: t0 + TIMING.fireMs + (acidKill ? 900 : endOfRound ? 500 : 0), attacks, pending, landAt, dying,
       dieAt: (acidKill ? acidAt : landAt) + 700, pulls, tags, boarded, boardAt: acidAt,
       popups: Object.entries(perTarget).map(([shipId, p]) => ({ at: landAt, shipId, ...p })),
+      missileMoves, missileGoneAt,
     };
     phase = 'fire';
     pushState();
@@ -1305,7 +1377,48 @@ export function start({ container, players, setPhoneState, onExit }) {
   const BOLT_MS = 380; // how long one laser bolt takes to reach its target
   const BOLT_TAIL = 0.9; // after arriving, the impact flash lasts this share of BOLT_MS
 
+  // A missile: a small red dart pointing at its target, with a short glowing trail.
+  function drawMissile(m, t) {
+    const S = scale;
+    const p = poseOf(m, t);
+    const tg = unitById(m.target);
+    const ang = p.heading ?? (tg ? Math.atan2(tg.y - p.y, tg.x - p.x) : 0);
+    const x = p.x * S, y = p.y * S, L = Math.max(7, S * 0.45);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    ctx.strokeStyle = 'rgba(255,169,77,.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.6, 0);
+    ctx.lineTo(-L * (1.4 + 0.3 * Math.sin(t / 80)), 0);
+    ctx.stroke();
+    ctx.fillStyle = '#ff6b6b';
+    ctx.shadowColor = '#ff6b6b';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.6, 0);
+    ctx.lineTo(-L * 0.6, -L * 0.3);
+    ctx.lineTo(-L * 0.4, 0);
+    ctx.lineTo(-L * 0.6, L * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = colorOf(m.owner);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x, y, L * 0.75, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   function poseOf(s, t) {
+    if (s.kind === 'missile') {
+      // Missiles that keep flying move toward their target during the Fire animation.
+      const mv = anim?.kind === 'fire' && anim.missileMoves?.[s.id];
+      if (!mv) return s;
+      const u = Math.min(1, Math.max(0, (t - anim.start) / FIRE_LAND_MS));
+      return { x: mv.from.x + (mv.to.x - mv.from.x) * u, y: mv.from.y + (mv.to.y - mv.from.y) * u, heading: Math.atan2(mv.to.y - mv.from.y, mv.to.x - mv.from.x) };
+    }
     if (isSquad(s)) {
       // Squadrons fly after the ships have finished moving.
       const p = anim?.kind === 'move' && anim.squadPaths[s.id];
@@ -1657,6 +1770,11 @@ export function start({ container, players, setPhoneState, onExit }) {
         if (q.docked && !anim?.docking?.has(q.id)) continue; // docked squadrons are inside their carrier
         if (q.alive || anim?.dying.has(q.id) || anim?.boarded?.has(q.id)) drawSquad(q, t);
       }
+      for (const m of missiles) {
+        const goneAt = anim?.kind === 'fire' ? anim.missileGoneAt?.[m.id] : undefined;
+        if (!m.alive && !(goneAt !== undefined && t < goneAt)) continue;
+        drawMissile(m, t);
+      }
     }
     // (During setup the ships aren't drawn yet: deployment edges depend on the chosen factions.)
 
@@ -1704,7 +1822,8 @@ export function start({ container, players, setPhoneState, onExit }) {
       // miss streaks past to one side, a crit is thicker with a big burst.
       for (const a of anim.attacks) {
         if (t < a.at) continue;
-        const from = unitById(a.from), toShip = unitById(a.to);
+        const from = anyUnit(a.from), toShip = anyUnit(a.to);
+        if (!from || !toShip) continue;
         const to = poseOf(toShip, t);
         const small = a.pd || isSquad(from);
         for (const b of a.bolts) {
@@ -1764,7 +1883,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       const row = {};
       for (const g of anim.tags) {
         if (t < g.at || t > g.at + 1800) continue;
-        const s = unitById(g.shipId);
+        const s = anyUnit(g.shipId);
         if (!s) continue;
         const p = poseOf(s, t);
         const n = (row[g.shipId] = (row[g.shipId] || 0) + 1);
