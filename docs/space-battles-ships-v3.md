@@ -239,8 +239,8 @@ Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 | Ship | Class | Cost | Hull | Shields | ⚡ | Speed | Clicks | Weapons | PD |
 |---|---|---|---|---|---|---|---|---|---|
 | Firefly | Corvette | 9 | 8 | 1/1/1/0 | 2 | 1–4 | 3/3/3/2 | Auto Turret | Flechette ×1 |
-| Rouge | Corvette | 12 | 6 | 2/2/2/1 | 4 | 2–5 | 3/3/2/2 | Auto Cannon, Auto Turret | Flechette ×1 |
-| Free Trader | Cruiser | 14 | 9 | 2/2/2/1 | 5 | 1–4 | 3/2/1/1 | Auto Turret ×2, Missile Launcher ×2 | Flechette ×2 |
+| Rouge | Corvette | 12 | 7 | 2/2/2/1 | 4 | 2–5 | 3/3/2/2 | Auto Cannon, Auto Turret | Flechette ×1 |
+| Free Trader | Cruiser | 14 | 9 | 2/2/2/1 | 5 | 1–4 | 3/2/1/1 | Auto Turret ×2, Missile Launcher ×2 | Flechette ×3 |
 
 - Rouge: 4 Power can't fire the Auto Cannon (3) and the Auto Turret (2) together.
 - Turning: Firefly like the Torpedo Boat, Rouge like the Samurai, Free Trader like the Escort.

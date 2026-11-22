@@ -271,7 +271,7 @@ export const SHIPS = {
     name: 'Rouge', short: 'Rouge', faction: 'pirates', class: 'corvette', cost: 12,
     ratings: { o: 4, d: 3, m: 5 },
     desc: 'A fast gunboat. Points its nose at a ship and shreds it with the Auto Cannon.',
-    hull: 6, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3 }, power: 4,
+    hull: 7, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3 }, power: 4,
     weapons: ['autoCannon', 'autoTurret'], pd: [pd('flechette', 1)],
   },
   freeTrader: {
@@ -279,7 +279,7 @@ export const SHIPS = {
     ratings: { o: 3, d: 3, m: 3, u: 4 },
     desc: 'A patched-up freighter full of guns. Customize it in the shipyard.',
     hull: 9, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 5,
-    weapons: ['autoTurret', 'autoTurret', 'missileLauncher', 'missileLauncher'], pd: [pd('flechette', 2)], missiles: 5,
+    weapons: ['autoTurret', 'autoTurret', 'missileLauncher', 'missileLauncher'], pd: [pd('flechette', 3)], missiles: 5,
   },
 };
 
