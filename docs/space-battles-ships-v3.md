@@ -218,9 +218,9 @@ When a side has more than one ship of the same type, they're labeled **A, B, C�
 - Small assumptions still marked ⚠ above: one shot per weapon, Torpedo + Targeted Attack don't
   stack (still 9–10), and a ship can pick no stance.
 
-## Pirates ✅ (rework, steps 1–2 of 3)
+## Pirates ✅ (rework)
 
-Step 3 (Xar Teleporter) is still to come. The Outrider and the old Pirate "home"
+The Outrider and the old Pirate "home"
 rule (extra speed change at half hull) are removed. The old Pirate weapons (Autocannon Turret,
 Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 
@@ -250,7 +250,7 @@ Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
 |---|---|---|
 | Illegal Dark Lance | 5 | Adds a Dark Lance (spinal, long, 5 damage) and +3 Power to fire it. |
 | Scavenger Hold | 1 | Carries 1 squadron of Scavengers. Removing it removes the squadron. |
-| Xar Teleporter | 2 | **Step 3 (not built yet).** Once per game, Teleport stance: after the Move, tap anywhere unoccupied on the map and pick a facing; speed is kept. |
+| Xar Teleporter | 2 | ✅ Once per game, the **Teleport** stance (picked in Plan Movement, so it shows when the Move starts). After the Move the TV says "Teleportation in progress" and the owner gets the whole map on their phone: tap any free spot (on the map, not overlapping a ship or an asteroid), turn it, Confirm. The ship jumps there and keeps its speed. 45 s to pick: when time runs out the last spot tapped is used, or the ship stays put if none was. The stance is used up either way. |
 
 ### Scavengers (squadron)
 

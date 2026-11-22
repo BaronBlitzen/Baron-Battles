@@ -14,7 +14,7 @@ import {
   applyHullDamage, pullToward, stanceDamage, sanitizeRepair, applyRepair, shieldsOff,
   absorbableShields, maxSpeed, critCount, isSquad, squadDef, SQUAD_R, unitDistance,
   needToHit, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTargets, latchTarget,
-  weaponShots, upgradeProblem, upgradeChoices, carrierSlots, tryLastStand, missilesLeft, missileDistance,
+  weaponShots, upgradeProblem, upgradeChoices, carrierSlots, tryLastStand, missilesLeft, missileDistance, teleportProblem, normAngle,
   launchSpot, canDock, mineSpot, sanitizeHold, sizeRules, sizeForPlayers,
   squadBuyProblem, killValue, applySquadHits, critOnOf, boostCap,
   captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName, sanitizeRotate, rotatedShip,
@@ -27,7 +27,7 @@ const capFace = (id) => (CAPTAINS[id] ? ` ${faceImg(id, 26)} ${escapeHtml(CAPTAI
 
 const PHASE_NAMES = {
   setup: 'Fleet Setup', intro: 'Battle stations', planMove: 'Plan Movement', move: 'Move',
-  planFire: 'Plan Fire', roll: 'Roll dice', fire: 'Fire', over: 'Battle over',
+  planFire: 'Plan Fire', roll: 'Roll dice', fire: 'Fire', teleport: 'Teleport', warp: 'Teleport', over: 'Battle over',
 };
 const FIRE_LAND_MS = 1900; // when all fire damage lands (after the tracers)
 
@@ -58,7 +58,7 @@ const publicShip = (s) => ({
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
   specialUsed: s.specialUsed || 0, boost: s.boost ? { ...s.boost } : null,
   captain: s.captain || null, letter: s.letter || '', mods: [...(s.mods || [])],
-  stubbornUsed: !!s.stubbornUsed, lastStand: !!s.lastStand, missiles: s.missiles || 0,
+  stubbornUsed: !!s.stubbornUsed, lastStand: !!s.lastStand, missiles: s.missiles || 0, teleportUsed: !!s.teleportUsed,
 });
 
 // Position and heading are set by deploy().
@@ -193,6 +193,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   let anim = null;
   let rollData = null; // Roll Dice phase: the attacks already rolled, waiting to be shown
   let rolled = {}; // playerId -> true once their phone has shown its dice
+  let teleport = null; // Teleport phase: { ids: [ship ids], plans: { shipId: { x, y, heading } }, done: { shipId: true } }
   let rollPublic = null; // the dice rows phones show (kept through the Fire animation)
   let result = null;
   let battleFactions = [];
@@ -297,7 +298,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   }
 
   function secondsLeft() {
-    if (phase !== 'planMove' && phase !== 'planFire' && phase !== 'roll') return null;
+    if (!['planMove', 'planFire', 'roll', 'teleport'].includes(phase)) return null;
     return Math.max(0, Math.ceil((phaseEndsAt - now()) / 1000));
   }
 
@@ -327,6 +328,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       squads: (phoneSquads || squads).map(publicSquad),
       kills: { ...kills },
       roll: phase === 'roll' || phase === 'fire' ? rollPublic : null,
+      teleport: phase === 'teleport' ? { ids: [...teleport.ids], done: { ...teleport.done } } : null,
       rolled: { ...rolled },
       result,
     });
@@ -611,6 +613,7 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   function checkAllReady() {
     if (phase === 'roll') { checkAllRolled(); return; }
+    if (phase === 'teleport') { checkTeleportDone(); return; }
     if (phase !== 'planMove' && phase !== 'planFire') return;
     const req = required();
     if (req.length && req.every((id) => ready[id])) endPlan();
@@ -722,6 +725,57 @@ export function start({ container, players, setPhoneState, onExit }) {
       dieAt: t0 + TIMING.moveMs + 100,
     };
     phase = 'move';
+    pushState();
+  }
+
+  // ---------- Teleport (Xar Teleporter) ----------
+  // After the Move: ships that used the Teleport stance this round get a spot picked on their
+  // owner's phone (any free spot, any facing). The TV waits, then shows the jumps.
+  function startTeleport() {
+    const ids = ships.filter((s) => s.alive && s.stance?.id === 'teleport' && !s.teleportUsed).map((s) => s.id);
+    if (!ids.length) { startPlan('planFire'); return; }
+    teleport = { ids, plans: {}, done: {} };
+    phase = 'teleport';
+    phaseKey++;
+    phaseEndsAt = now() + TIMING.teleportSeconds * 1000;
+    pushState();
+    checkTeleportDone();
+  }
+
+  // Phone: { type: 'teleport', round, shipId, x, y, heading, confirm }. Each tap is kept (used if
+  // time runs out); Confirm locks it in.
+  function teleportInput(id, msg) {
+    if (phase !== 'teleport' || msg.round !== round) return;
+    const s = shipById(msg.shipId);
+    if (!s || s.owner !== id || !teleport.ids.includes(s.id) || teleport.done[s.id]) return;
+    const pose = { x: Number(msg.x), y: Number(msg.y), heading: normAngle(Number(msg.heading)) };
+    if (teleportProblem(s, pose, ships, asteroids, map)) return;
+    teleport.plans[s.id] = pose;
+    if (msg.confirm) teleport.done[s.id] = true;
+    pushState();
+    checkTeleportDone();
+  }
+
+  function checkTeleportDone() {
+    if (phase !== 'teleport') return;
+    if (teleport.ids.every((sid) => teleport.done[sid] || !online.has(shipById(sid).owner))) finishTeleport();
+  }
+
+  function finishTeleport() {
+    const moves = {};
+    for (const sid of teleport.ids) {
+      const s = shipById(sid);
+      s.teleportUsed = true; // the stance is used up even if no spot was picked
+      const to = teleport.plans[sid];
+      // Checked again: two teleporting ships can't land on each other.
+      if (!to || teleportProblem(s, to, ships, asteroids, map)) continue;
+      moves[sid] = { from: { x: s.x, y: s.y, heading: s.heading }, to };
+      Object.assign(s, to);
+    }
+    teleport = null;
+    const t0 = now();
+    anim = { kind: 'warp', start: t0, end: t0 + TIMING.teleportMs, moves, dying: new Set(), dieAt: Infinity, pending: [], fx: [], tags: [], popups: [] };
+    phase = 'warp';
     pushState();
   }
 
@@ -1253,7 +1307,7 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   // ---------- Surrender (rules §1) ----------
   // A team surrenders once every online teammate has tapped Surrender (taps can be taken back).
-  const battleRunning = () => ['intro', 'planMove', 'move', 'planFire', 'roll', 'fire'].includes(phase);
+  const battleRunning = () => ['intro', 'planMove', 'move', 'teleport', 'warp', 'planFire', 'roll', 'fire'].includes(phase);
 
   function surrenderInput(id, msg) {
     if (!battleRunning() || !battleFactions.includes(teams[id])) return;
@@ -1323,13 +1377,18 @@ export function start({ container, players, setPhoneState, onExit }) {
       startPlan('planMove');
     } else if ((phase === 'planMove' || phase === 'planFire') && t >= phaseEndsAt) {
       endPlan();
+    } else if (phase === 'teleport' && t >= phaseEndsAt) {
+      finishTeleport();
+    } else if (phase === 'warp' && t >= anim.end) {
+      anim = null;
+      startPlan('planFire');
     } else if (phase === 'roll' && t >= phaseEndsAt) {
       resolveFire();
     } else if (phase === 'move' && t >= anim.end) {
       anim = null;
       phoneShips = null;
       phoneSquads = null;
-      if (!checkWinner()) startPlan('planFire');
+      if (!checkWinner()) startTeleport();
     } else if (phase === 'fire' && t >= anim.end) {
       anim = null;
       phoneShips = null;
@@ -1426,6 +1485,9 @@ export function start({ container, players, setPhoneState, onExit }) {
       const u = Math.min(1, Math.max(0, (t - anim.start - TIMING.moveMs) / TIMING.squadMoveMs));
       return { x: p.from.x + (p.to.x - p.from.x) * u, y: p.from.y + (p.to.y - p.from.y) * u };
     }
+    // Teleport: the ship stays put for the first half of the jump, then appears at its new spot.
+    const warp = anim?.kind === 'warp' && anim.moves[s.id];
+    if (warp) return t < anim.start + (anim.end - anim.start) / 2 ? warp.from : warp.to;
     const pull = anim?.kind === 'fire' && anim.pulls[s.id];
     if (pull) {
       const u = Math.min(1, Math.max(0, (t - anim.landAt) / PULL_MS));
@@ -1793,6 +1855,45 @@ export function start({ container, players, setPhoneState, onExit }) {
       }
       for (const p of anim.pending) popup(p.shipId, p.at, p.shieldLost, p.hullLost, t, p.fromX, p.fromY);
     }
+    // Teleport: a pulsing ring on each ship about to jump while its owner picks a spot.
+    if (phase === 'teleport' && teleport) {
+      const pulse = 0.5 + 0.5 * Math.sin(t / 180);
+      for (const sid of teleport.ids) {
+        const s = shipById(sid);
+        if (!s) continue;
+        ctx.save();
+        ctx.strokeStyle = teleport.done[sid] ? '#b197fc' : `rgba(177,151,252,${0.4 + 0.6 * pulse})`;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 6]);
+        ctx.lineDashOffset = t / 30;
+        ctx.beginPath();
+        ctx.arc(s.x * S, s.y * S, S * (1.6 + 0.2 * pulse), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      const who = [...new Set(teleport.ids.filter((sid) => !teleport.done[sid]).map((sid) => nameOf(shipById(sid).owner)))];
+      label(`✨ Teleportation in progress…${who.length ? ` ${who.join(', ')} is picking a spot` : ''}`, W / 2, Math.max(28, S * 1.4), '#d0bfff', Math.max(20, S * 0.9));
+    }
+    // The jump: a ring collapses where the ship was, then bursts open where it lands.
+    if (anim?.kind === 'warp') {
+      const half = (anim.end - anim.start) / 2;
+      for (const mv of Object.values(anim.moves)) {
+        const k = (t - anim.start) / half;
+        const at = k < 1 ? mv.from : mv.to;
+        const r = k < 1 ? (1 - k) * 2.4 : (k - 1) * 2.4;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, k < 1 ? 1 - k * 0.3 : 2 - k);
+        ctx.strokeStyle = '#d0bfff';
+        ctx.shadowColor = '#b197fc';
+        ctx.shadowBlur = 16;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(at.x * S, at.y * S, Math.max(0.1, r) * S, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        if (k >= 1) label('✨ TELEPORT!', mv.to.x * S, mv.to.y * S - S * 1.8, '#d0bfff', Math.max(16, S * 0.8));
+      }
+    }
     // Roll Dice: faint aim lines (who is shooting whom) while the players roll on their phones.
     if (phase === 'roll' && rollData) {
       const pulse = 0.35 + 0.2 * Math.sin(t / 250);
@@ -1930,6 +2031,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (phase === 'setup') setupInput(id, msg);
       else if (msg.type === 'planMove' || msg.type === 'planFire') planInput(id, msg);
       else if (msg.type === 'rolled') rolledInput(id, msg);
+      else if (msg.type === 'teleport') teleportInput(id, msg);
       else if (msg.type === 'surrender') surrenderInput(id, msg);
     },
     setOnline(ids) {

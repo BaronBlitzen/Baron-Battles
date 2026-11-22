@@ -580,8 +580,26 @@ export function shipStances(ship) {
     if (st.carrierOnly && (!isCarrier(ship) || cap?.alwaysCommand)) return false;
     if (st.ships && !st.ships.includes(ship.type)) return false;
     if (st.captain && ship.captain !== st.captain) return false;
+    if (st.upgrade && !(ship.mods || []).includes(st.upgrade)) return false; // Teleport: Xar Teleporter
+    if (st.oncePerGame && ship.teleportUsed) return false;
     return true;
   });
+}
+
+// ---------- Teleport (Xar Teleporter) ----------
+// Why the ship can't teleport to pose { x, y, heading }, or null: it must be fully on the map and
+// not overlap another living ship or an asteroid (with a little room).
+export function teleportProblem(ship, pose, ships, asteroids, map) {
+  if (![pose?.x, pose?.y, pose?.heading].every(Number.isFinite)) return 'Pick a spot';
+  const cls = classOf(ship);
+  if (outOfBounds(pose, cls, map)) return 'Off the map';
+  const roomy = { ...cls, length: cls.length + 0.4, width: cls.width + 0.4 };
+  for (const o of ships) {
+    if (o.id === ship.id || !o.alive) continue;
+    if (polygonsOverlap(corners(pose, roomy), shipPolygon(o))) return 'Too close to a ship';
+  }
+  for (const a of asteroids || []) if (rectHitsCircle(pose, cls, { x: a.x, y: a.y, r: a.r + 0.2 })) return 'On an asteroid';
+  return null;
 }
 
 // Stances this ship may pick this round (any stance may be repeated). A damaged Bridge allows

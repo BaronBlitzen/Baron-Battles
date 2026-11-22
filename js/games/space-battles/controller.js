@@ -13,7 +13,7 @@ import {
   stanceOptions, shipStances, maxSpeed, isSquad, squadDef, unitName, endTurnClicks, weaponOffline, boostCap,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
   carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus, upgradeChoices, upgradeProblem, missilesLeft,
-  captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
+  captainOf, captainChoices, captainProblem, canAddWild, teleportProblem, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
 } from './rules.js';
 import { faceImg } from './portraits.js';
 
@@ -67,6 +67,8 @@ export function mount({ container, me, sendInput }) {
   let confirmSurrender = false; // first Surrender tap asks "are you sure?"
   // Roll Dice: the TV already rolled; this phone reveals its own rows one by one.
   let rollKey = null;
+  let tpKey = null; // Teleport: phaseKey the drafts below belong to
+  let tpDraft = {}; // shipId -> { x, y, heading } picked on the full map (none = not picked yet)
   let rollStage = 'ready'; // 'ready' (Fire! button) | 'rolling' | 'done'
   let rollShown = 0; // rows already revealed
   let rollTimer = 0;
@@ -114,7 +116,7 @@ export function mount({ container, me, sendInput }) {
   function header() {
     const phaseName = {
       setup: 'Fleet Setup', intro: 'Battle stations', planMove: 'Plan Movement', move: 'Moving…',
-      planFire: 'Plan Fire', roll: 'Roll dice', fire: 'Firing…', over: 'Battle over',
+      planFire: 'Plan Fire', roll: 'Roll dice', fire: 'Firing…', teleport: 'Teleport', warp: 'Teleporting…', over: 'Battle over',
     }[state.phase];
     const round = state.phase === 'setup' ? '' : `Round ${Math.max(1, state.round)}/${FLEET.maxRounds} · `;
     const f = state.teams?.[myId()];
@@ -481,6 +483,128 @@ export function mount({ container, me, sendInput }) {
     sendInput({ type: 'rolled', round: state.round });
     render();
   }
+
+  // ---------- Teleport (Xar Teleporter) ----------
+  // My ship that still has to pick a spot (the first one, if a player has several).
+  const tpShip = () => (state.teleport?.ids || []).map(shipById).find((s) => s && s.owner === myId() && !state.teleport.done[s.id]) || null;
+  const tpProblem = (s) => teleportProblem(s, tpDraft[s.id], state.ships, state.asteroids, state.map);
+
+  function viewTeleport() {
+    const s = tpShip();
+    if (!s) {
+      const waiting = [...new Set((state.teleport?.ids || []).filter((id) => !state.teleport.done[id]).map((id) => person(shipById(id).owner).name))];
+      return viewWatch('✨ Teleportation in progress', waiting.length ? `Waiting for ${waiting.join(', ')} to pick a spot. Watch the TV.` : 'Watch the TV.');
+    }
+    const p = tpDraft[s.id];
+    const problem = p ? tpProblem(s) : null;
+    return `
+      ${header()}
+      <div class="sbp-body">
+        <div class="sbp-watch"><h2>✨ Teleport</h2><p><b>${escapeHtml(unitName(s))}</b>: tap anywhere on the map to pick where it lands, turn it, then Confirm. It keeps its speed (${s.speed}).</p></div>
+        <canvas class="sbp-tpmap"></canvas>
+        <div class="sbp-sqorders">
+          <button data-act="tpTurn" data-d="-90">⟲ 90°</button>
+          <button data-act="tpTurn" data-d="-15">◀ 15°</button>
+          <button data-act="tpTurn" data-d="15">15° ▶</button>
+          <button data-act="tpTurn" data-d="90">90° ⟳</button>
+        </div>
+        <p class="sbp-small ${problem ? 'red' : 'green'}">${!p ? 'No spot picked yet: your ship stays where it is.' : problem ? `✖ ${escapeHtml(problem)}: pick another spot.` : '✔ That spot is free.'}</p>
+        <button class="big-btn sbp-ready" data-act="tpConfirm" ${p && !problem ? '' : 'disabled'}>✨ Confirm teleport</button>
+        <p class="sbp-keys muted">Keys: arrows / WASD move the spot · Q/E turn · Enter confirm</p>
+      </div>`;
+  }
+
+  // The whole map, with the ship's landing spot as a ghost (green = free, red = blocked).
+  function drawTeleportMap() {
+    const cv = root.querySelector('.sbp-tpmap');
+    const s = tpShip();
+    if (!cv || !s) return;
+    const m = state.map;
+    const W = cv.clientWidth || 320, k = W / m.w, H = m.h * k;
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.height = `${H}px`;
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#070a1c';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(120,140,220,.5)';
+    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+    for (const a of state.asteroids || []) {
+      ctx.fillStyle = '#4a4458';
+      ctx.beginPath();
+      ctx.arc(a.x * k, a.y * k, a.r * k, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const poly = (pts, fill, stroke, dash) => {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * k, y * k) : ctx.moveTo(x * k, y * k)));
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.setLineDash(dash || []); ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); }
+    };
+    for (const o of state.ships) {
+      if (!o.alive) continue;
+      poly(corners(o, classOf(o)), o.id === s.id ? null : person(o.owner).color, o.id === s.id ? '#b197fc' : null, o.id === s.id ? [4, 3] : null);
+    }
+    for (const q of squads()) {
+      if (!q.alive || q.docked) continue;
+      ctx.fillStyle = person(q.owner).color;
+      ctx.beginPath();
+      ctx.arc(q.x * k, q.y * k, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const p = tpDraft[s.id];
+    if (p) {
+      const ok = !tpProblem(s);
+      poly(corners(p, classOf(s)), ok ? 'rgba(81,207,102,.45)' : 'rgba(255,107,107,.45)', ok ? '#51cf66' : '#ff6b6b');
+      // Nose marker.
+      const r = (p.heading * Math.PI) / 180, L = classOf(s).length / 2 + 0.6;
+      ctx.strokeStyle = ok ? '#51cf66' : '#ff6b6b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x * k, p.y * k);
+      ctx.lineTo((p.x + Math.cos(r) * L) * k, (p.y + Math.sin(r) * L) * k);
+      ctx.stroke();
+    }
+  }
+
+  // Tapping the map picks the spot (keeping the chosen facing).
+  function tpPick(x, y) {
+    const s = tpShip();
+    if (!s) return;
+    const prev = tpDraft[s.id];
+    tpDraft[s.id] = { x: Math.max(0, Math.min(state.map.w, x)), y: Math.max(0, Math.min(state.map.h, y)), heading: prev ? prev.heading : s.heading };
+    tpSend(false);
+    render();
+  }
+
+  function tpTurn(deg) {
+    const s = tpShip();
+    if (!s) return;
+    const p = tpDraft[s.id] || { x: s.x, y: s.y, heading: s.heading };
+    tpDraft[s.id] = { ...p, heading: ((p.heading + deg) % 360 + 360) % 360 };
+    tpSend(false);
+    render();
+  }
+
+  // Sends the spot to the TV (kept if time runs out); confirm = locked in.
+  function tpSend(confirm) {
+    const s = tpShip();
+    const p = s && tpDraft[s.id];
+    if (!p || tpProblem(s)) return;
+    sendInput({ type: 'teleport', round: state.round, shipId: s.id, ...p, confirm });
+    if (confirm) buzz(60);
+  }
+
+  root.addEventListener('click', (e) => {
+    const cv = e.target.closest?.('.sbp-tpmap');
+    if (!cv || state?.phase !== 'teleport') return;
+    const r = cv.getBoundingClientRect();
+    const k = r.width / state.map.w;
+    tpPick((e.clientX - r.left) / k, (e.clientY - r.top) / k);
+  });
 
   function viewSent() {
     return `
@@ -1045,7 +1169,7 @@ export function mount({ container, me, sendInput }) {
   }
 
   // ---------- Surrender ----------
-  const battleRunning = () => ['intro', 'planMove', 'move', 'planFire', 'roll', 'fire'].includes(state.phase);
+  const battleRunning = () => ['intro', 'planMove', 'move', 'teleport', 'warp', 'planFire', 'roll', 'fire'].includes(state.phase);
 
   function surrenderBar() {
     const myTeam = state.teams[myId()];
@@ -1079,6 +1203,7 @@ export function mount({ container, me, sendInput }) {
     if (bar) root.insertAdjacentHTML('beforeend', bar);
     updateTimer();
     drawMap();
+    if (state.phase === 'teleport') drawTeleportMap();
     syncDraft();
   }
 
@@ -1088,6 +1213,8 @@ export function mount({ container, me, sendInput }) {
     else if (state.phase === 'move') root.innerHTML = viewWatch('Ships are moving', 'Watch the TV.');
     else if (state.phase === 'fire') root.innerHTML = myRolls().length ? viewRoll() : viewWatch('Open fire!', 'Watch the TV.');
     else if (state.phase === 'roll') root.innerHTML = viewRoll();
+    else if (state.phase === 'teleport') root.innerHTML = viewTeleport();
+    else if (state.phase === 'warp') root.innerHTML = viewWatch('✨ Teleport!', 'Watch the TV.');
     else if (state.phase === 'over') root.innerHTML = viewOver();
     else if (!myLiving().length) root.innerHTML = viewWatch(myShips().length ? 'Your fleet is gone' : 'Spectating', 'Cheer on your team on the TV.');
     else if (isReady()) root.innerHTML = viewSent();
@@ -1286,6 +1413,8 @@ export function mount({ container, me, sendInput }) {
     else if (act === 'repairCrit') { repairDraft[selShip] = { crit: Number(b.dataset.i) }; render(); }
     else if (act === 'send') send();
     else if (act === 'fire') startRolling();
+    else if (act === 'tpTurn') tpTurn(Number(b.dataset.d));
+    else if (act === 'tpConfirm') tpSend(true);
     else if (act === 'skipRoll') finishRolling();
     else if (act === 'unready') sendInput({ type: state.phase, round: state.round, ready: false });
   });
@@ -1295,7 +1424,19 @@ export function mount({ container, me, sendInput }) {
     if (!state) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const planning = (state.phase === 'planMove' || state.phase === 'planFire') && myLiving().length && !isReady();
-    if (state.phase === 'roll') {
+    if (state.phase === 'teleport') {
+      const s = tpShip();
+      const p = s && tpDraft[s.id];
+      if (!s) return;
+      if (k === 'q') tpTurn(-15);
+      else if (k === 'e') tpTurn(15);
+      else if (k === 'Enter') tpSend(true);
+      else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(k)) {
+        const base = p || { x: s.x, y: s.y, heading: s.heading };
+        const dx = { ArrowLeft: -1, a: -1, ArrowRight: 1, d: 1 }[k] || 0, dy = { ArrowUp: -1, w: -1, ArrowDown: 1, s: 1 }[k] || 0;
+        tpPick(base.x + dx, base.y + dy);
+      } else return;
+    } else if (state.phase === 'roll') {
       if (k !== 'Enter' && k !== ' ') return;
       if (rollStage === 'ready') startRolling();
       else if (rollStage === 'rolling') finishRolling();
@@ -1364,6 +1505,7 @@ export function mount({ container, me, sendInput }) {
       meNow = meLatest || meNow;
       if (state.secondsLeft !== null && state.secondsLeft !== undefined) deadline = performance.now() + state.secondsLeft * 1000;
       if ((state.phase === 'planMove' || state.phase === 'planFire') && draftKey !== state.phaseKey) resetDrafts();
+      if (state.phase === 'teleport' && tpKey !== state.phaseKey) { tpKey = state.phaseKey; tpDraft = {}; }
       if (state.phase === 'roll' && rollKey !== state.phaseKey) {
         stopRollTimers();
         rollKey = state.phaseKey;
@@ -1376,7 +1518,7 @@ export function mount({ container, me, sendInput }) {
         rollStage = 'done';
         rollShown = myRolls().length;
       }
-      if (state.phase !== lastPhase && (state.phase === 'planMove' || state.phase === 'planFire' || state.phase === 'roll')) buzz(60);
+      if (state.phase !== lastPhase && (state.phase === 'planMove' || state.phase === 'planFire' || state.phase === 'roll' || (state.phase === 'teleport' && tpShip()))) buzz(60);
       lastPhase = state.phase;
       render();
     },

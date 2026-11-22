@@ -291,6 +291,8 @@ export const UPGRADES = {
     desc: 'A stolen Dark Lance (spinal, long range, 5 damage) and +3 Power to fire it.' },
   scavengerHold: { name: 'Scavenger Hold', short: 'Hold', icon: '✈', cost: 1, ships: ['freeTrader'], squadrons: 1, carries: ['scavengers'],
     desc: 'Carries 1 squadron of Scavengers.' },
+  xarTeleporter: { name: 'Xar Teleporter', short: 'Teleporter', icon: '✨', cost: 2, ships: ['freeTrader'],
+    desc: 'Once per game, the Teleport stance: after everyone moves, pick any free spot on the map and a facing, and the ship jumps there (keeping its speed).' },
 };
 export const UPGRADE_ORDER = Object.keys(UPGRADES);
 
@@ -331,6 +333,8 @@ export const TIMING = {
   squadMoveMs: 1400, // squadrons move after ships (only when there are squadrons)
   fireMs: 4200,
   rollSeconds: 30, // Roll Dice: the TV waits this long at most for everyone to tap Fire!
+  teleportSeconds: 45, // Teleport: time to pick a spot (the last spot tapped is used when it runs out)
+  teleportMs: 1400, // the jump on the TV
 };
 
 // Dice (phone Roll screen) and laser bolt (TV) color for each weapon, so a die and its shot on the
@@ -418,8 +422,10 @@ export const STANCES = {
     captain: 'shrike', doubleWeapons: ['lance'] },
   reckless: { name: 'Reckless Attack', icon: '💥', desc: 'Golbrik only. Take 1 hull damage. All your weapons fire twice this round (no extra Power).',
     captain: 'golbrik', selfDamage: 1, doubleWeapons: 'all' },
+  teleport: { name: 'Teleport', icon: '✨', desc: 'Xar Teleporter, once per game. After everyone moves, pick any free spot on the map and a facing on your phone: the ship jumps there and keeps its speed.',
+    upgrade: 'xarTeleporter', oncePerGame: true },
 };
-export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targeted', 'command', 'violentTurn', 'exterminate', 'reckless'];
+export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targeted', 'command', 'violentTurn', 'exterminate', 'reckless', 'teleport'];
 
 // Captains: an upgrade bought for one ship (or one squadron) in fleet building, at most one each.
 // The same captain may be on several ships. A captain is lost with its ship.

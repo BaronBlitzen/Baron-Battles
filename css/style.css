@@ -218,7 +218,8 @@ body.phone #app { min-height: 100dvh; display: flex; }
 .sbp-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .sbp-tabs button.on { background: var(--accent); color: #1b1300; border-color: var(--accent); }
 .sbp-shipname { display: grid; gap: 2px; }
-.sbp-map { width: 100%; display: block; border-radius: 12px; border: 1px solid var(--line); background: #05071a; }
+.sbp-map, .sbp-tpmap { width: 100%; display: block; border-radius: 12px; border: 1px solid var(--line); background: #05071a; }
+.sbp-tpmap { cursor: crosshair; touch-action: manipulation; }
 .sbp-speed { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--card); border-radius: 14px; padding: 8px; }
 .sbp-speed div { display: grid; text-align: center; }
 .sbp-speed small { color: var(--muted); }
