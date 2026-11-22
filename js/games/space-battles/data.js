@@ -272,7 +272,7 @@ export const SHIPS = {
     ratings: { o: 4, d: 3, m: 5 },
     desc: 'A fast gunboat. Points its nose at a ship and shreds it with the Auto Cannon.',
     hull: 7, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3 }, power: 4,
-    weapons: ['autoCannon', 'autoTurret'], pd: [pd('flechette', 1)],
+    weapons: ['autoCannon', 'autoTurret'], pd: [pd('flechette', 2)],
   },
   freeTrader: {
     name: 'Free Trader', short: 'Free Trader', faction: 'pirates', class: 'cruiser', cost: 14,
