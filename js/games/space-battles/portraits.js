@@ -18,6 +18,7 @@ export const PORTRAIT_PALETTE = {
   u: '#e39a5b', // pale Grunt throat
   b: '#3b8cff', // blue warpaint
   g: '#5d6470', // rivets
+  c: '#ff8a5c', y: '#ffe8a3', // starfish coral and spots (shade: 'o' from PALETTE)
 };
 
 export const PORTRAIT_SIZE = 24;
@@ -359,6 +360,89 @@ export const PORTRAITS = {
     'HOOOOOOOHHHHHOOOOOOOHHHH',
     'HHHHHHHHHHHHHHHHHHHHHHHH',
   ],
+
+  // ---------- Pirates ----------
+  // Scruffy brown hair, brown coat collar over a beige shirt, a grin.
+  mal: mirror([
+    '............',
+    '.......NNNNN',
+    '.....NNNNNNN',
+    '....NNNNNNNN',
+    '....NNNNNNNN',
+    '...NNNSSSSSN',
+    '...NNSSSSSSS',
+    '...NSSSSSSSS',
+    '...NSKKKSSSS',
+    '..sSSSekSSSS',
+    '..sSSSSSSSSS',
+    '...SSSSSSSsS',
+    '...SSSSSSSss',
+    '...sSSSSSSSS',
+    '....SSSSkkkk',
+    '....sSSSSSSS',
+    '.....ssSSSSS',
+    '......sssSSS',
+    '....UUU.SSSS',
+    '...UUUUU.sSS',
+    '..UUUUUUU.AA',
+    '.UUUUUUUUiAA',
+    'UUUUUUUUUiAA',
+    'UUUUUUUUUiAA',
+  ]),
+  // Black topknot, green headband, mustache and beard, gunmetal armor.
+  liuBei: mirror([
+    '..........KK',
+    '.........KKK',
+    '.......KKKKK',
+    '.....KKKKKKK',
+    '....KKKKKKKK',
+    '....VVVVVVVV',
+    '....KSSSSSSS',
+    '...KSSSSSSSS',
+    '...KSKKKKSSS',
+    '...sSSekSSSS',
+    '...sSSSSSSSS',
+    '....SSSSSSsS',
+    '....SSSSSSss',
+    '....SKKKSSSS',
+    '....SSKKkkkk',
+    '....sSSKSSSS',
+    '.....sSKKKKK',
+    '......sKKKKK',
+    '.......KKKKK',
+    '....iii.KKKK',
+    '...IIIIii.KK',
+    '..IVIIIIIiII',
+    '.IIIIIIIIIII',
+    'IIIIIIIIIIII',
+  ]),
+  // A five-armed coral starfish with yellow spots.
+  flerf: mirror([
+    '...........c',
+    '..........cc',
+    '..........cc',
+    '.........ccc',
+    '.........cyc',
+    '........cccc',
+    '........cccc',
+    'cc......cccc',
+    '.cccc..ccccc',
+    '..cccccccccc',
+    '...cyccccccc',
+    '....cccekccc',
+    '.....cckkccc',
+    '......cccccc',
+    '......ccckkk',
+    '......cccccc',
+    '.....ccccooo',
+    '.....cccc...',
+    '....ccccc...',
+    '....ccyc....',
+    '...cccc.....',
+    '...ccc......',
+    '..ccc.......',
+    '..cc........',
+  ]),
 };
 
 // Draw a portrait with its top-left at (x, y), each pixel `scale` screen pixels wide.

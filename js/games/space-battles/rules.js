@@ -8,18 +8,21 @@
 import {
   FACTIONS, WEAPONS, RANGE_BANDS, CLASSES, SHIPS, MOVE, ARCS, ARC_DEFS, ZONES, FLEET, STANCES, STANCE_ORDER, CRITICALS,
   SQUADRONS, SQUADRON, SQUAD_ORDERS, HIT, SPECIALS, MINES, BATTLE_SIZES, CAPTAINS, CAPTAIN_ORDER,
+  UPGRADES, UPGRADE_ORDER, defWithMods,
 } from './data.js';
 //
 // A squadron at runtime looks like:
 // { id, kind: 'squad', type, faction, owner, carrier (ship id), slot (0.. in its wing), x, y,
-//   hull (living craft), shields (living craft that still have their shield), alive }
+//   hull (living craft), shields (living craft that still have their shield), hurt (living craft
+//   that have lost hull but not all of it: only types with craftHull > 1), alive }
 // "Units" = ships and squadrons together (anything that can be targeted).
 
 const RAD = Math.PI / 180;
 const TURN_PART = 0.25; // share of a segment's time spent turning (turn first, then fly straight)
 export const MOVE_TICKS = 120; // collision checks per Move phase
 
-export const shipDef = (ship) => SHIPS[ship.type];
+// The ship's numbers, with its customizations (`ship.mods`, UPGRADES ids) applied.
+export const shipDef = (ship) => defWithMods(ship.type, ship.mods);
 export const classOf = (ship) => CLASSES[SHIPS[ship.type].class];
 export const isEnemy = (a, b) => a.faction !== b.faction;
 
@@ -217,11 +220,16 @@ export function accuracyOf(attacker, ships = []) {
   return (stanceOf(attacker).accuracy || 0) + packBonus(attacker, ships);
 }
 
+// A captain's boost for one weapon (Liu Bei: Auto Cannon +1 shot, +1 accuracy), or {}.
+const weaponBoost = (ship, wd) => (wd && !isSquad(ship) && captainOf(ship)?.weaponBoost?.[wd.id]) || {};
+// Shots weapon `w` ({ weapon, shots }) of `ship` fires per attack.
+export const weaponShots = (ship, w) => w.shots + (weaponBoost(ship, WEAPONS[w.weapon]).shots || 0);
+
 // The d10 roll needed to hit (1 = can't miss: auto-hit weapons like the Djnzuar Disruptor).
 export function needToHit(attacker, wd, target, ships = []) {
   if (wd?.autoHit) return 1;
   if (wd?.pd && isSquad(target)) return HIT.base;
-  return Math.max(2, HIT.base + agilityOf(target) - accuracyOf(attacker, ships));
+  return Math.max(2, HIT.base + agilityOf(target) - accuracyOf(attacker, ships) - (weaponBoost(attacker, wd).accuracy || 0));
 }
 
 // The roll a ship's weapon crits on: the weapon's own (Torpedo 9) or Targeted Attack's 9, else 10.
@@ -241,9 +249,9 @@ export function hitChance(attacker, wd, band, target, units = []) {
   return chanceOf(needToHit(attacker, wd, target, units));
 }
 
-// Carrier capacity (0 for ships that aren't carriers).
-export const carrierSlots = (type) => SHIPS[type]?.squadrons || 0;
-export const isCarrier = (ship) => carrierSlots(ship.type) > 0;
+// Carrier capacity (0 for ships that aren't carriers). `mods` = customizations (Scavenger Hold).
+export const carrierSlots = (type, mods) => defWithMods(type, mods)?.squadrons || 0;
+export const isCarrier = (ship) => carrierSlots(ship.type, ship.mods) > 0;
 
 // Squadron types a faction can buy, cheapest first.
 export function factionSquadTypes(faction) {
@@ -252,8 +260,8 @@ export function factionSquadTypes(faction) {
 }
 
 // Squadron types one carrier type may hold (the Queen only carries some).
-export function carrierSquadTypes(type) {
-  const def = SHIPS[type];
+export function carrierSquadTypes(type, mods) {
+  const def = defWithMods(type, mods);
   return factionSquadTypes(def.faction).filter((t) => !def.carries || def.carries.includes(t));
 }
 
@@ -285,17 +293,31 @@ export function sanitizeSquadOrder(q, o, units) {
   return out;
 }
 
-// Damage to a squadron (mutates it). `hits` = damage of each hit. Hits finish off a craft whose
-// shield is already down first; otherwise a hit knocks off one craft's shield, or destroys it
-// outright if it ignores shields or does 2+ damage. Returns { shieldLost, hullLost } (hull = craft).
+// Damage to a squadron (mutates it). `hits` = damage of each hit. Each hit goes to the weakest
+// craft: first one already hurt, then one with no shield, then a shielded one. On a craft, damage
+// takes the shield first, then hull; a hit of shield + craftHull or more (or one that ignores
+// shields and covers the hull) destroys it outright. Craft with 1 hull (most types): a hit knocks
+// off the shield, the next destroys it, and a 2+ damage hit destroys it at once. Scavengers (2
+// hull): 3 small hits, or one hit of 3+. Returns { shieldLost, hullLost } (hull = craft destroyed).
 export function applySquadHits(q, hits, ignoreShields = false) {
+  const H = squadDef(q).craftHull || 1;
+  q.hurt = q.hurt || 0;
   let shieldLost = 0, hullLost = 0;
+  const kill = (from) => { q.hull--; hullLost++; if (from === 'hurt') q.hurt--; else if (from === 'shield') q.shields--; };
   for (const d of hits) {
     if (q.hull <= 0 || d <= 0) continue;
-    if (q.hull > q.shields) { q.hull--; hullLost++; continue; }
-    if (ignoreShields || d >= 2) { q.hull--; q.shields--; hullLost++; continue; }
+    const bare = q.hull - q.shields - q.hurt; // full hull, no shield
+    if (q.hurt > 0) { kill('hurt'); continue; } // a hurt craft has 1 hull left
+    if (bare > 0) {
+      if (d >= H) kill('bare');
+      else q.hurt++; // H = 2, d = 1
+      continue;
+    }
+    // Every living craft still has its shield.
+    if (d >= H + 1 || (ignoreShields && d >= H)) { kill('shield'); continue; }
     q.shields--;
     shieldLost++;
+    if (d - 1 > 0) q.hurt++; // shield and some hull (2 damage on a 2-hull craft)
   }
   return { shieldLost, hullLost };
 }
@@ -443,14 +465,18 @@ export function screened(ship, ships) {
     && (w.id === ship.id || rangeBand(shipDistance(w, ship)) === 'close'));
 }
 
-// Point-defense target (all of a ship's PD shots go there): the nearest enemy squadron that is
-// attacking this ship this round (`attackers`; PD shoots those first, before they fire), else the
-// nearest launched enemy squadron in close range.
-export function pdTarget(ship, squads, attackers = []) {
+// Point-defense targets. If enemy squadrons (or missiles) are attacking this ship this round
+// (`attackers`), PD splits its shots between all of them, nearest first, and those shots land before
+// they fire: returns { first: true, targets: [nearest, …] }. Otherwise all PD shots go at the
+// nearest launched enemy squadron in close range: { first: false, targets: [it] }. Null if none.
+export function pdTargets(ship, squads, attackers = []) {
   if (!(shipDef(ship).pd || []).length) return null;
   const inRange = squads.filter((q) => inSpace(q) && isEnemy(ship, q) && rangeBand(unitDistance(ship, q)) === 'close');
-  const first = inRange.filter((q) => attackers.some((a) => a.id === q.id));
-  return nearest(ship, first.length ? first : inRange)?.u || null;
+  const byDist = (list) => list.map((u) => [unitDistance(ship, u), u]).sort((a, b) => a[0] - b[0]).map(([, u]) => u);
+  const first = byDist(inRange.filter((q) => attackers.some((a) => a.id === q.id)));
+  if (first.length) return { first: true, targets: first };
+  const n = nearest(ship, inRange)?.u;
+  return n ? { first: false, targets: [n] } : null;
 }
 
 // Boarding Pod latch: the enemy ship whose outline this (launched) pod touches (or null).
@@ -598,7 +624,7 @@ export function planPower(ship, plan) {
 export const CRIT_VALUE = 2;
 export function expectedWeaponDamage(ship, w, band, target, units = []) {
   const wd = WEAPONS[w.weapon];
-  return weaponRepeats(ship, w) * w.shots * hitChance(ship, wd, band, target, units) * (wd.effect === 'crit' ? CRIT_VALUE : wd.damage);
+  return weaponRepeats(ship, w) * weaponShots(ship, w) * hitChance(ship, wd, band, target, units) * (wd.effect === 'crit' ? CRIT_VALUE : wd.damage);
 }
 
 // A weapon knocked out by a Weapons Systems critical.
@@ -951,6 +977,17 @@ function absorb(ship, zone, amount) {
   return { temp, own, rest: amount - temp - own };
 }
 
+// Mal Reynolds, Too Stubborn to Die: the first time the ship drops to 0 hull it stays at 1 instead
+// (once per game), and `lastStand` cancels all further damage to it until the next round starts.
+// Mutates the ship; true if it just happened.
+export function tryLastStand(ship) {
+  if (ship.hull > 0 || !captainOf(ship)?.stubborn || ship.stubbornUsed) return false;
+  ship.hull = 1;
+  ship.stubbornUsed = true;
+  ship.lastStand = true;
+  return true;
+}
+
 export function applyDamage(ship, zone, amount) {
   const a = absorb(ship, zone, amount);
   const hullLost = Math.min(ship.hull, a.rest);
@@ -1015,7 +1052,10 @@ export function simulateMove(ships, plans, scenario) {
 
   const hit = (ship, px, py, amount) => {
     const at = { ...ship, ...pose[ship.id] };
-    const d = applyDamage(ship, zoneFacing(at, px, py), stanceDamage(ship, amount)); // Brace halves collisions too
+    const zone = zoneFacing(at, px, py);
+    if (ship.lastStand) return { shipId: ship.id, zone, amount: 0, shieldLost: 0, tempLost: 0, hullLost: 0 };
+    const d = applyDamage(ship, zone, stanceDamage(ship, amount)); // Brace halves collisions too
+    if (tryLastStand(ship)) d.hullLost -= 1;
     if (ship.hull <= 0) ship.destroyed = true;
     return d;
   };
@@ -1171,12 +1211,26 @@ export function sizeForPlayers(n) {
   return (BATTLE_SIZES.find((s) => n >= s.players[0] && n <= s.players[1]) || BATTLE_SIZES[BATTLE_SIZES.length - 1]).id;
 }
 
-// A player's fleet = [{ type, wing: [squadron types], captain?, wingCaptains?: [captain id or null per squadron] }]
-// (wing only for carriers).
+// A player's fleet = [{ type, wing: [squadron types], captain?, wingCaptains?: [captain id or null
+// per squadron], mods?: [UPGRADES ids] }] (wing only for carriers).
 const capCost = (id) => CAPTAINS[id]?.cost || 0;
 export function fleetCost(entries) {
   return entries.reduce((n, e) => n + (SHIPS[e.type]?.cost || 0) + capCost(e.captain)
+    + (e.mods || []).reduce((m, id) => m + (UPGRADES[id]?.cost || 0), 0)
     + (e.wing || []).reduce((m, q, k) => m + (SQUADRONS[q]?.cost || 0) + capCost(e.wingCaptains?.[k]), 0), 0);
+}
+
+// Customizations a ship type may take.
+export const upgradeChoices = (type) => UPGRADE_ORDER.filter((id) => UPGRADES[id].ships.includes(type));
+
+// Why customization `modId` can't be added to mine[index], or null.
+export function upgradeProblem(modId, mine, index, share) {
+  const e = mine[index];
+  if (!e || !UPGRADES[modId]) return 'No such customization';
+  if (!upgradeChoices(e.type).includes(modId)) return 'Can\'t take that';
+  if ((e.mods || []).includes(modId)) return 'Already fitted';
+  if (fleetCost(mine) + UPGRADES[modId].cost > share) return 'Not enough points';
+  return null;
 }
 
 // Why captain `capId` can't go on mine[index] (or, with `slot`, on that squadron of it), or null.
@@ -1209,9 +1263,9 @@ export function squadBuyProblem(sqType, faction, mine, index, share) {
   const def = SQUADRONS[sqType];
   const e = mine[index];
   if (!def || def.faction !== faction || !e) return 'Not your faction';
-  const slots = carrierSlots(e.type);
+  const slots = carrierSlots(e.type, e.mods);
   if (!slots) return 'Not a carrier';
-  if (!carrierSquadTypes(e.type).includes(sqType)) return 'Can\'t carry that';
+  if (!carrierSquadTypes(e.type, e.mods).includes(sqType)) return 'Can\'t carry that';
   if ((e.wing || []).length >= slots) return 'Carrier full';
   if (fleetCost(mine) + def.cost > share) return 'Not enough points';
   return null;

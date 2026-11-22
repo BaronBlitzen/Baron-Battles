@@ -20,6 +20,14 @@ export const PALETTE = {
   O: '#5c3420', // dark brown armor plate
   M: '#ff2eb8', // magenta glow
   P: '#ff9be0', // pink glow / flame
+  // Pirates: gunmetal hull, rust patches, green trim, green engine glow
+  I: '#8a94a3', // gunmetal hull
+  i: '#555e6c', // gunmetal shade
+  U: '#a5602e', // rust patch
+  V: '#51cf66', // green trim
+  v: '#b2f2bb', // green engine glow
+  T: '#2b8a3e', // dark green
+  o: '#d9603b', // dark orange (Firefly engine bulb edge)
   // shared
   D: '#3d424d', // charcoal (engines, pods, runway)
 };
@@ -300,6 +308,100 @@ const SPRITES_RAW = {
     '.OOO.',
     'HHHHH',
     '..M..',
+  ] },
+
+  // ---------- Pirates ----------
+  // Long and skinny like a pencil, with a slim orange engine bulb at the back.
+  firefly: { half: true, rows: [
+    '.....',
+    '....I',
+    '....I',
+    '...II',
+    '...IC',
+    '...IC',
+    '...II',
+    '...iI',
+    '...IV',
+    '...iI',
+    '...II',
+    '...GG',
+    '...GD',
+    '...II',
+    '...iI',
+    '...IU',
+    '...iI',
+    '...II',
+    '...II',
+    '..oFF',
+    '.oFFY',
+    '.oFFY',
+    '.oFFY',
+    '.oFFF',
+    '.oFFF',
+    '..oFF',
+    '...ii',
+    '...vv',
+    '....v',
+    '...v.',
+  ] },
+  // Twin Auto Cannon barrels out front, swept wings, a turret behind.
+  rouge: { half: true, rows: [
+    '.....G..',
+    '.....G..',
+    '.....G.I',
+    '.....GII',
+    '....IIII',
+    '....IIIC',
+    '....IIIC',
+    '...UIIII',
+    '...IIIII',
+    '..IIVVII',
+    '.IIIIIII',
+    'IIIUIIII',
+    'II..IIGG',
+    'I...IIGD',
+    '....iiii',
+    '.....ii.',
+    '.....vv.',
+    '......v.',
+    '.....v..',
+  ] },
+  // A bulky freighter: cargo containers along the sides, two turrets, missile racks.
+  freeTrader: { half: true, rows: [
+    '......IIIII',
+    '.....IIIIII',
+    '....IICCIII',
+    '....IIIIIII',
+    '....iiiiiii',
+    '..UUUUiIIGG',
+    '..UTTUiIIGD',
+    '..UUUUiIIII',
+    '..TTTTiIIII',
+    '..TVVTiIIII',
+    '..TTTTiIIII',
+    '......iIIII',
+    '..UUUUiIIII',
+    '..UUUUiIIII',
+    'iiii..iIIII',
+    'RIII..iIIII',
+    'RIII..iIIII',
+    'iiii..iIIII',
+    '..TTTTiIIGG',
+    '..TVVTiIIGD',
+    '..TTTTiIIII',
+    '....iiiiiii',
+    '....IIIIIII',
+    '...iiDD.DDi',
+    '....vv..vv.',
+    '.....v...v.',
+    '....v...v..',
+  ] },
+  scavengers: { rows: [
+    '..I..',
+    '.IVI.',
+    'IIIII',
+    'U.I.U',
+    '..v..',
   ] },
 };
 

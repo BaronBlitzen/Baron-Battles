@@ -8,7 +8,7 @@
   body { margin: 0; padding: 24px 16px; background: #1b2a47; color: #e9eef7; font-family: system-ui, sans-serif; }
   h1 { margin: 0 0 4px; font-size: 22px; }
   h2 { font-size: 17px; margin: 24px 0 10px; }
-  .prot h2 { color: #4dabf7; } .djn h2 { color: #ff922b; }
+  .prot h2 { color: #4dabf7; } .djn h2 { color: #ff922b; } .pir h2 { color: #51cf66; }
   p.note { margin: 0 0 8px; color: #a9b6cc; font-size: 14px; max-width: 700px; }
   .row { display: flex; flex-wrap: wrap; gap: 14px; }
   .card { background: #13203a; border-radius: 8px; padding: 12px; text-align: center; width: 250px; }
@@ -24,11 +24,13 @@
 Big = 8× size, small = 2×.</p>
 <div class="prot"><h2>Human Protectorate</h2><div class="row" id="prot"></div></div>
 <div class="djn"><h2>Djn'zuar</h2><div class="row" id="djn"></div></div>
+<div class="pir"><h2>Pirates</h2><div class="row" id="pir"></div></div>
 <script type="module">
   import { PORTRAITS, PORTRAIT_SIZE, drawPortrait } from '../js/games/space-battles/portraits.js';
   import { CAPTAINS } from '../js/games/space-battles/data.js';
 
   const PROT = ['shuna', 'verity', 'shrike', 'amelia', 'flaggs', 'kairos'];
+  const PIR = ['mal', 'liuBei', 'flerf'];
 
   function draw(id, scale) {
     const cv = document.createElement('canvas');
@@ -48,7 +50,7 @@ Big = 8× size, small = 2×.</p>
     card.append(pics);
     const cap = CAPTAINS[id];
     card.insertAdjacentHTML('beforeend', cap ? `<b>${cap.name}</b><span>${cap.desc}</span>` : `<b>${id}</b>`);
-    document.getElementById(PROT.includes(id) ? 'prot' : 'djn').append(card);
+    document.getElementById(PROT.includes(id) ? 'prot' : PIR.includes(id) ? 'pir' : 'djn').append(card);
   }
 </script>
 </body>

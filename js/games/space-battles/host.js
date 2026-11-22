@@ -5,6 +5,7 @@ import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, WEAPONS, SHIPS, SCENARIOS, TIMING, ZONES, MISSIONS, FLEET, STANCES,
   CRITICALS, CRIT_POOL, SQUADRONS, SQUADRON_ROLES, SQUAD_ORDERS, HIT, SPECIALS, BATTLE_SIZES, CAPTAINS, diceColor,
+  UPGRADES,
 } from './data.js';
 import {
   classOf, shipDef, simulateMove, sanitizeMovePlan, defaultMovePlan, sanitizeFirePlan,
@@ -12,7 +13,8 @@ import {
   MOVE_TICKS, pointShare, fleetCost, cheapestShipCost, buyProblem, weaponKey, applyShieldDamage,
   applyHullDamage, pullToward, stanceDamage, sanitizeRepair, applyRepair, shieldsOff,
   absorbableShields, maxSpeed, critCount, isSquad, squadDef, SQUAD_R, unitDistance,
-  needToHit, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTarget, latchTarget,
+  needToHit, isCarrier, wingOf, planSquadMoves, squadAttackTarget, screened, pdTargets, latchTarget,
+  weaponShots, upgradeProblem, upgradeChoices, carrierSlots, tryLastStand,
   launchSpot, canDock, mineSpot, sanitizeHold, sizeRules, sizeForPlayers,
   squadBuyProblem, killValue, applySquadHits, critOnOf, boostCap,
   captainOf, captainProblem, maxHull, regenZone, weaponRepeats, unitName, sanitizeRotate, rotatedShip,
@@ -43,7 +45,7 @@ const cloneSquad = (q) => ({ ...q, order: { ...q.order } });
 // their carrier's position.
 const publicSquad = (q) => ({
   id: q.id, kind: 'squad', type: q.type, faction: q.faction, owner: q.owner, carrier: q.carrier,
-  slot: q.slot, x: q.x, y: q.y, hull: q.hull, shields: q.shields, alive: q.alive, docked: !!q.docked, order: { ...q.order },
+  slot: q.slot, x: q.x, y: q.y, hull: q.hull, shields: q.shields, hurt: q.hurt || 0, alive: q.alive, docked: !!q.docked, order: { ...q.order },
   captain: q.captain || null, letter: q.letter || '', spent: !!q.spent,
 });
 const publicShip = (s) => ({
@@ -55,14 +57,16 @@ const publicShip = (s) => ({
   stance: s.stance ? { ...s.stance } : null, lastStance: s.lastStance || 'balanced',
   tempShields: { ...(s.tempShields || {}) }, crits: (s.crits || []).map((c) => ({ ...c })),
   specialUsed: s.specialUsed || 0, boost: s.boost ? { ...s.boost } : null,
-  captain: s.captain || null, letter: s.letter || '',
+  captain: s.captain || null, letter: s.letter || '', mods: [...(s.mods || [])],
+  stubbornUsed: !!s.stubbornUsed, lastStand: !!s.lastStand,
 });
 
 // Position and heading are set by deploy().
-function makeShip(id, type, owner, captain = null) {
+function makeShip(id, type, owner, captain = null, mods = []) {
   const def = SHIPS[type];
   const s = {
     id, type, faction: def.faction, owner, x: 0, y: 0, heading: 0, captain: CAPTAINS[captain] ? captain : null,
+    mods: (mods || []).filter((m) => UPGRADES[m]?.ships.includes(type)),
     speed: def.speed[0], hull: def.hull, shields: { ...def.shields }, alive: true, specialUsed: 0,
   };
   s.hull = maxHull(s);
@@ -75,7 +79,7 @@ function makeSquads(carrier, types, nextId, captains = []) {
     const def = SQUADRONS[type];
     return {
       id: nextId(), kind: 'squad', type, faction: def.faction, owner: carrier.owner, carrier: carrier.id, slot,
-      x: carrier.x, y: carrier.y, hull: def.craft, shields: def.shield ? def.craft : 0,
+      x: carrier.x, y: carrier.y, hull: def.craft, shields: def.shield ? def.craft : 0, hurt: 0,
       alive: true, docked: true, order: { order: 'docked' }, captain: CAPTAINS[captains[slot]] ? captains[slot] : null,
     };
   });
@@ -179,6 +183,7 @@ export function start({ container, players, setPhoneState, onExit }) {
   let holdPlans = {}; // playerId -> { shipId: Smuggler's Hold choice { target, kind } }
   let critPlans = {}; // playerId -> { shipId: critical system id } (Seir-Seir picks the critical)
   let rotatePlans = {}; // playerId -> { shipId: clicks } (Kairos turns before shooting)
+  let fivePlans = {}; // playerId -> { shipId: "arc:index" } (Flerf's Five Arms: that weapon fires twice)
   let mines = []; // [{ id, x, y }] dropped by Mine Drop (neutral)
   let mineCount = 0;
   let anim = null;
@@ -332,7 +337,19 @@ export function start({ container, players, setPhoneState, onExit }) {
       const f = teams[id];
       const mine = fleets[id] || [];
       if (!f || buyProblem(msg.shipType, f, mine, shareOf(id), teamShipCount(f), sizeRules(size).maxShips)) return;
-      fleets[id] = [...mine, { type: msg.shipType, wing: [], captain: null, wingCaptains: [] }];
+      fleets[id] = [...mine, { type: msg.shipType, wing: [], captain: null, wingCaptains: [], mods: [] }];
+      delete ready[id];
+    } else if (msg.type === 'mod') {
+      // Customization (UPGRADES) on one ship: on = fit it, off = remove it. Removing a hangar also
+      // drops the squadrons that no longer fit.
+      const mine = fleets[id] || [];
+      const i = Number(msg.index);
+      const e = mine[i];
+      if (!e || !upgradeChoices(e.type).includes(msg.mod)) return;
+      if (msg.on && upgradeProblem(msg.mod, mine, i, shareOf(id))) return;
+      const mods = msg.on ? [...(e.mods || []), msg.mod] : (e.mods || []).filter((m) => m !== msg.mod);
+      const slots = carrierSlots(e.type, mods);
+      fleets[id] = mine.map((x, j) => (j === i ? { ...x, mods, wing: x.wing.slice(0, slots), wingCaptains: (x.wingCaptains || []).slice(0, slots) } : x));
       delete ready[id];
     } else if (msg.type === 'captain' || msg.type === 'squadCaptain') {
       // Captain upgrade on a ship (or one squadron of a carrier); captain null = dismiss.
@@ -443,7 +460,7 @@ export function start({ container, players, setPhoneState, onExit }) {
                       return `<li><div class="sb-pname"><span class="dot" style="background:${colorOf(id)}"></span>${escapeHtml(nameOf(id))}
                         <span class="sb-pts ${overBudget(id) ? 'red' : ''}">${spentOf(id)}/${share}</span>
                         ${!online.has(id) ? '<em class="muted">offline</em>' : ready[id] ? '<b class="green">✔ Ready</b>' : ''}</div>
-                        ${mine.length ? `<div class="sb-pships">${mine.map((e) => escapeHtml(SHIPS[e.type].short) + capFace(e.captain) + (e.wing.length ? ` (${e.wing.map((q, k) => escapeHtml(SQUADRONS[q].short) + capFace(e.wingCaptains?.[k])).join(', ')})` : '')).join(' · ')}</div>` : ''}</li>`;
+                        ${mine.length ? `<div class="sb-pships">${mine.map((e) => escapeHtml(SHIPS[e.type].short) + (e.mods || []).map((m) => ` ${UPGRADES[m].icon}`).join('') + capFace(e.captain) + (e.wing.length ? ` (${e.wing.map((q, k) => escapeHtml(SQUADRONS[q].short) + capFace(e.wingCaptains?.[k])).join(', ')})` : '')).join(' · ')}</div>` : ''}</li>`;
                     }).join('') : '<li class="muted">No players yet</li>'}
                   </ul>` : '<p class="sb-soon">Coming soon</p>'}
               </div>`;
@@ -464,7 +481,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     for (const id of order) {
       if (!battleFactions.includes(teams[id])) continue;
       for (const e of fleets[id] || []) {
-        const s = makeShip(`s${ships.length + 1}`, e.type, id, e.captain);
+        const s = makeShip(`s${ships.length + 1}`, e.type, id, e.captain, e.mods);
         ships.push(s);
         if (e.wing.length) wings.push([s, e.wing, e.wingCaptains || []]);
       }
@@ -514,11 +531,13 @@ export function start({ container, players, setPhoneState, onExit }) {
         s.tempShields = {};
         // Criticals caught last round now take effect (Hull Fire).
         for (const c of s.crits || []) delete c.fresh;
+        delete s.lastStand; // Too Stubborn to Die only shields the ship for the round it happened
       }
       repairPlans = {};
       holdPlans = {};
       critPlans = {};
       rotatePlans = {};
+      fivePlans = {};
     }
     ready = {};
     movePlans = {};
@@ -559,7 +578,12 @@ export function start({ container, players, setPhoneState, onExit }) {
       holdPlans[id] = {};
       critPlans[id] = {};
       rotatePlans[id] = {};
+      fivePlans[id] = {};
       for (const s of mine) {
+        // Flerf's Five Arms: the weapon ("arc:index") that fires twice this round.
+        const fk = msg.fiveArms?.[s.id];
+        const aimed = plans[s.id].some((a) => Object.keys(a.targets).some((wi) => weaponKey(a.arc, wi) === fk));
+        if (captainOf(s)?.fiveArms && aimed) fivePlans[id][s.id] = fk;
         const r = sanitizeRepair(s, msg.repairs?.[s.id]);
         if (r) repairPlans[id][s.id] = r;
         const h = sanitizeHold(s, msg.holds?.[s.id], ships);
@@ -628,6 +652,8 @@ export function start({ container, players, setPhoneState, onExit }) {
     const res = simulateMove(ships, plans, { ...scenario, mines });
     const before = new Set(ships.filter((s) => s.alive).map((s) => s.id));
     ships = ships.map((s) => res.ships.find((r) => r.id === s.id) || s);
+    // Mal Reynolds survived a deadly crash or mine with 1 hull.
+    for (const s of ships) if (s.lastStand) fx.push({ at: t0 + TIMING.moveMs - 300, x: s.x, y: s.y, kind: 'stand' });
     // Mines: the ones set off are gone; Mine Drop leaves a new one behind each ship that used it.
     const minesBefore = mines.map((m) => ({ ...m, hitAt: res.minesHit.find((h) => h.id === m.id)?.tick }));
     mines = mines.filter((m) => !res.minesHit.some((h) => h.id === m.id));
@@ -710,7 +736,7 @@ export function start({ container, players, setPhoneState, onExit }) {
 
   // One weapon's shots at one target (one "attack": all its hits add up). Every shot rolls a d10
   // (needToHit). Against a squadron: no crits, no special effects.
-  function rollWeapon(s, t, w, shots = w.shots) {
+  function rollWeapon(s, t, w, shots = weaponShots(s, w)) {
     const wd = WEAPONS[w.weapon];
     const band = rangeBand(unitDistance(s, t));
     const sq = isSquad(t);
@@ -785,6 +811,19 @@ export function start({ container, players, setPhoneState, onExit }) {
       if (!s.alive) continue;
       const planned = firePlans[s.owner]?.[s.id]; // sent plan, or the latest draft on a timeout
       const plan = planned || defaultFirePlan(s, all, asteroids);
+      // Flerf's Five Arms: the picked weapon fires once more; with no pick, the strongest one aimed.
+      let five = null;
+      if (captainOf(s)?.fiveArms) {
+        five = fivePlans[s.owner]?.[s.id] || null;
+        if (!five) {
+          let best = -1;
+          for (const a of plan) for (const wi of Object.keys(a.targets)) {
+            const w = arcWeapons(s, a.arc)[wi];
+            const v = w ? WEAPONS[w.weapon].damage * weaponShots(s, w) : -1;
+            if (v > best) { best = v; five = weaponKey(a.arc, wi); }
+          }
+        }
+      }
       for (const a of plan) {
         const weapons = arcWeapons(s, a.arc);
         for (const [wi, targetId] of Object.entries(a.targets)) {
@@ -792,20 +831,26 @@ export function start({ container, players, setPhoneState, onExit }) {
           const t = unitById(targetId);
           if (!w || !t) continue;
           const onceKey = WEAPONS[w.weapon].once ? weaponKey(a.arc, wi) : null;
-          // Exterminate / Reckless Attack: the weapon fires twice (two separate attacks).
-          for (let n = weaponRepeats(s, w); n > 0; n--) {
+          // Exterminate / Reckless Attack / Five Arms: the weapon fires again (separate attacks).
+          const extra = five === weaponKey(a.arc, wi) && !onceKey ? 1 : 0;
+          for (let n = weaponRepeats(s, w) + extra; n > 0; n--) {
             attacks.push({ from: s.id, to: t.id, arc: a.arc, onceKey, zone: isSquad(t) ? null : zoneFacing(t, s.x, s.y), ...rollWeapon(s, t, w) });
           }
         }
       }
-      // Point-defense fires on its own (free, not changed by stances or criticals): first at an enemy
-      // squadron attacking this ship (those shots land before the squadron fires), else at the
-      // nearest enemy squadron in close range.
+      // Point-defense fires on its own (free, not changed by stances or criticals). If squadrons are
+      // attacking this ship, its shots are split between them (nearest first, taking turns) and land
+      // before they fire; otherwise all go at the nearest enemy squadron in close range.
       const attackers = squads.filter((q) => squadTargets[q.id]?.id === s.id);
-      const pt = pdTarget(s, squads, attackers);
-      if (pt) {
-        const first = attackers.includes(pt);
-        for (const w of shipDef(s).pd) (first ? firstStrike : attacks).push({ from: s.id, to: pt.id, zone: null, pd: true, first, ...rollWeapon(s, pt, w, w.shots) });
+      const pd = pdTargets(s, squads, attackers);
+      if (pd) {
+        for (const w of shipDef(s).pd) {
+          const per = pd.targets.map(() => 0);
+          for (let k = 0; k < w.shots; k++) per[k % per.length]++;
+          pd.targets.forEach((t, j) => {
+            if (per[j]) (pd.first ? firstStrike : attacks).push({ from: s.id, to: t.id, zone: null, pd: true, first: pd.first, ...rollWeapon(s, t, w, per[j]) });
+          });
+        }
       }
     }
     // Work out which attacking craft that point-defense shoots down before they can fire (same
@@ -923,6 +968,12 @@ export function start({ container, players, setPhoneState, onExit }) {
         p.hullLost += d.hullLost;
         continue;
       }
+      // Mal Reynolds already survived a deadly hit this round (in the Move): no more damage.
+      if (target.lastStand) {
+        a.damage = 0; a.shieldLost = 0; a.hullLost = 0;
+        tag(a.to, '🔨 Too stubborn to die: no damage', '#ffd43b');
+        continue;
+      }
       // Critical rolls: while the zone still has shields, the hit does double damage; once they're
       // gone (or for damage that ignores shields), it damages a system instead. Hits land in order,
       // shields first. Disruptor hits do no damage but each causes a critical hit.
@@ -970,6 +1021,10 @@ export function start({ container, players, setPhoneState, onExit }) {
         tag(a.to, 'GRAPPLED', '#ff922b');
       }
     }
+
+    // Mal Reynolds, Too Stubborn to Die: shot down to 0 hull → stays at 1, and nothing else hurts it
+    // this round (no Hull Fire or acid below).
+    for (const s of next) if (tryLastStand(s)) tag(s.id, '🔨 TOO STUBBORN TO DIE! (1 hull)', '#ffd43b');
 
     // Grapple pulls: each grappled ship that survived is pulled once, toward the first grappler.
     const pulls = {};
@@ -1038,7 +1093,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     }
     // Hull Fire: 1 hull damage (caught before this round), ignoring shields. Jurddap is fireproof.
     for (const s of next) {
-      if (!critCount(s, 'hull') || s.hull <= 0 || captainOf(s)?.fireproof) continue;
+      if (!critCount(s, 'hull') || s.hull <= 0 || captainOf(s)?.fireproof || s.lastStand) continue;
       endOfRound = true;
       const d = applyHullDamage(s, CRITICALS.hull.burn);
       pending.push({ at: acidAt, ...d });
@@ -1050,7 +1105,7 @@ export function start({ container, players, setPhoneState, onExit }) {
       const due = s.acidDue[round];
       if (!due) continue;
       delete s.acidDue[round];
-      if (s.hull <= 0) continue;
+      if (s.hull <= 0 || s.lastStand) continue;
       endOfRound = true;
       const d = applyHullDamage(s, due);
       pending.push({ at: acidAt, ...d, acid: true });
@@ -1461,6 +1516,8 @@ export function start({ container, players, setPhoneState, onExit }) {
       const x = cx + ox * S * kScale, y = cy + oy * S * kScale;
       if (sprite) {
         ctx.save();
+        // Damaged craft (Scavengers that have lost hull) are drawn faded.
+        if (i >= hull - Math.min(hull, q.hurt || 0)) ctx.globalAlpha = alpha * 0.5;
         ctx.translate(x, y);
         ctx.rotate(facing + Math.PI / 2);
         ctx.imageSmoothingEnabled = false;
@@ -1614,6 +1671,7 @@ export function start({ container, players, setPhoneState, onExit }) {
         ctx.stroke();
         if (f.ram) label('RAM!', f.x * S, f.y * S - S, '#ff922b', Math.max(18, S));
         if (f.kind === 'mine') label('MINE!', f.x * S, f.y * S - S, '#ff6b6b', Math.max(18, S));
+        if (f.kind === 'stand') label('🔨 TOO STUBBORN TO DIE!', f.x * S, f.y * S - S * 1.6, '#ffd43b', Math.max(16, S * 0.8));
       }
       for (const p of anim.pending) popup(p.shipId, p.at, p.shieldLost, p.hullLost, t, p.fromX, p.fromY);
     }

@@ -38,11 +38,11 @@ export const FACTIONS = {
     color: '#51cf66', // green
     shades: ['#51cf66', '#b2f2bb', '#2b8a3e', '#8ce99a', '#ebfbee', '#2f9e44', '#69db7c', '#237032'],
     available: true,
-    blurb: 'Tough, fast, tricky. Turrets fire in any direction.',
+    blurb: 'Tough little gunboats and customizable freighters. Turrets fire in any direction.',
     edge: null,
     // Every ship is home: the first time a ship drops to half hull or less, next round
     // it may change speed by up to 2 and go up to 1 over max.
-    traits: { ram: null, home: { speedChange: 2, overMax: 1 } },
+    traits: { ram: null, home: null },
   },
 };
 export const FACTION_ORDER = ['protectorate', 'djnzuar', 'pirates'];
@@ -55,11 +55,13 @@ export const HIT = { die: 10, base: 4, critOn: 10, targetedCritOn: 9 };
 
 // Firing arcs. The ship points up in the pictures; angles are from the nose.
 //   spinal  – narrow, straight ahead (±15°)
+//   forward – a little wider, straight ahead (±22.5°)
 //   battery – everything except the rear 90° (±135°)
 //   turret  – any direction
-export const ARCS = ['spinal', 'battery', 'turret'];
+export const ARCS = ['spinal', 'forward', 'battery', 'turret'];
 export const ARC_DEFS = {
   spinal: { name: 'Spinal', half: 15, desc: '30° straight ahead' },
+  forward: { name: 'Forward', half: 22.5, desc: '45° straight ahead' },
   battery: { name: 'Battery', half: 135, desc: '270°, everything but the rear' },
   turret: { name: 'Turret', half: 180, desc: '360°, any direction' },
 };
@@ -116,17 +118,14 @@ export const WEAPONS = {
   thorn: { name: 'Thorn Burst', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
     desc: 'Point-defense against squadrons.' },
   // ----- Pirates -----
-  autocannon: { name: 'Autocannon Turret', arc: 'turret', reach: 'medium', power: 2, damage: 1, shots: 3,
-    desc: 'Fires in any direction.' },
-  breaching: { name: 'Breaching Cannon', arc: 'battery', reach: 'close', power: 2, damage: 1, shots: 3, critOn: 9,
-    desc: 'Rips ships open: crits on a 9 or 10.' },
-  disruptor: { name: 'Disruptor', arc: 'battery', reach: 'medium', power: 1, damage: 1, shots: 1, effect: 'disrupt',
-    desc: 'A hit gives the target −1 turn click per segment next round.' },
-  boarding: { name: 'Boarding Harpoon', arc: 'battery', reach: 'close', power: 1, damage: 1, shots: 1, once: true, effect: 'board', noSquadrons: true,
-    desc: 'Once per game. A hit always causes 1 critical.' },
+  autoTurret: { name: 'Auto Turret', arc: 'turret', reach: 'medium', power: 2, damage: 1, shots: 2,
+    desc: 'Two quick shots in any direction.' },
+  autoCannon: { name: 'Auto Cannon', arc: 'forward', reach: 'medium', power: 3, damage: 1, shots: 5,
+    desc: 'A hail of five shots straight ahead (45°).' },
   flechette: { name: 'Flechette Gun', arc: 'turret', reach: 'close', power: 0, damage: 1, shots: 1, pd: true,
     desc: 'Point-defense: a storm of small shots against squadrons.' },
 };
+for (const [id, w] of Object.entries(WEAPONS)) w.id = id;
 
 // Range bands, measured between the closest edges of two ships (in units).
 export const RANGE_BANDS = [
@@ -240,41 +239,69 @@ export const SHIPS = {
 
   // ----- Pirates -----
   firefly: {
-    name: 'Firefly', short: 'Firefly', faction: 'pirates', class: 'corvette', cost: 8,
-    ratings: { o: 2, d: 3, m: 5 },
-    desc: 'Fast and nimble, and tough for a corvette. Circles its prey with a turret.',
-    hull: 6, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3, 4: 3 }, power: 2,
-    weapons: ['autocannon', 'disruptor'],
+    name: 'Firefly', short: 'Firefly', faction: 'pirates', class: 'corvette', cost: 9,
+    ratings: { o: 2, d: 4, m: 5 },
+    desc: 'Long, thin and very nimble, and tough for a corvette. Circles its prey with a turret.',
+    hull: 8, shields: { front: 1, left: 1, right: 1, rear: 0 }, speed: [1, 4], clicks: 2, clicksAtSpeed: { 1: 3, 2: 3, 3: 3 }, power: 2,
+    weapons: ['autoTurret'], pd: [pd('flechette', 1)],
   },
   rouge: {
-    name: 'Rouge', short: 'Rouge', faction: 'pirates', class: 'corvette', cost: 9,
-    ratings: { o: 3, d: 2, m: 4, u: 2 },
-    desc: 'A fast boarder. Dives in, harpoons a ship to cripple it, and gets out.',
-    hull: 5, shields: { front: 1, left: 1, right: 1, rear: 1 }, speed: [2, 4], clicks: 1, clicksAtSpeed: { 2: 3, 3: 2 }, power: 2,
-    weapons: ['breaching', 'boarding'],
-  },
-  outrider: {
-    name: 'Outrider', short: 'Outrider', faction: 'pirates', class: 'destroyer', cost: 12,
-    ratings: { o: 3, d: 3, m: 3, u: 3 },
-    desc: 'Tricky and well-rounded. Leaves mines behind for anyone chasing it.',
-    hull: 8, shields: { front: 2, left: 1, right: 1, rear: 2 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 2, 2: 2 }, power: 3,
-    weapons: ['autocannon', 'breaching', 'disruptor'], pd: [pd('flechette', 1)], special: 'mineDrop',
+    name: 'Rouge', short: 'Rouge', faction: 'pirates', class: 'corvette', cost: 12,
+    ratings: { o: 4, d: 3, m: 5 },
+    desc: 'A fast gunboat. Points its nose at a ship and shreds it with the Auto Cannon.',
+    hull: 6, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [2, 5], clicks: 2, clicksAtSpeed: { 2: 3, 3: 3 }, power: 4,
+    weapons: ['autoCannon', 'autoTurret'], pd: [pd('flechette', 1)],
   },
   freeTrader: {
-    name: 'Free Trader', short: 'Free Trader', faction: 'pirates', class: 'destroyer', cost: 11,
-    ratings: { o: 2, d: 3, m: 3, u: 3 },
-    desc: 'Sturdy and slow but nimble, with the heaviest flak in the game and a hold full of spares.',
-    hull: 9, shields: { front: 2, left: 1, right: 1, rear: 1 }, speed: [1, 3], clicks: 1, clicksAtSpeed: { 1: 3, 2: 3 }, power: 3,
-    weapons: ['autocannon', 'autocannon', 'disruptor'], pd: [pd('flechette', 4)], special: 'smugglersHold',
+    name: 'Free Trader', short: 'Free Trader', faction: 'pirates', class: 'cruiser', cost: 14,
+    ratings: { o: 3, d: 3, m: 3, u: 4 },
+    desc: 'A patched-up freighter full of guns. Customize it in the shipyard.',
+    hull: 9, shields: { front: 2, left: 2, right: 2, rear: 1 }, speed: [1, 4], clicks: 1, clicksAtSpeed: { 1: 3, 2: 2 }, power: 5,
+    weapons: ['autoTurret', 'autoTurret'], pd: [pd('flechette', 2)],
   },
 };
 
-// Each ship's weapons grouped by arc: `arcs[arc]` = [{ weapon, shots }], in card order within the
-// arc. A weapon is addressed as (arc, index in that arc); the fire plan uses the same grouping.
+// A weapon list grouped by arc: `arcs[arc]` = [{ weapon, shots }], in card order within the arc.
+// A weapon is addressed as (arc, index in that arc); the fire plan uses the same grouping.
+const groupArcs = (weapons) => {
+  const arcs = {};
+  for (const id of weapons) (arcs[WEAPONS[id].arc] || (arcs[WEAPONS[id].arc] = [])).push({ weapon: id, shots: WEAPONS[id].shots });
+  return arcs;
+};
 for (const def of Object.values(SHIPS)) {
-  def.arcs = {};
-  for (const id of def.weapons) (def.arcs[WEAPONS[id].arc] || (def.arcs[WEAPONS[id].arc] = [])).push({ weapon: id, shots: WEAPONS[id].shots });
+  def.arcs = groupArcs(def.weapons);
   if (!def.pd) def.pd = [];
+}
+
+// Customizations: upgrades bought for one ship in fleet building (any number of different ones,
+// on top of a captain). Read through shipDef() in rules.js, which applies them to the ship.
+//   ships    – ship types that may take it
+//   weapons  – extra weapons; power – extra Power; squadrons / carries – a hangar
+export const UPGRADES = {
+  illegalDarkLance: { name: 'Illegal Dark Lance', short: 'Dark Lance', icon: '🔱', cost: 5, ships: ['freeTrader'], weapons: ['darkLance'], power: 3,
+    desc: 'A stolen Dark Lance (spinal, long range, 5 damage) and +3 Power to fire it.' },
+  scavengerHold: { name: 'Scavenger Hold', short: 'Hold', icon: '✈', cost: 1, ships: ['freeTrader'], squadrons: 1, carries: ['scavengers'],
+    desc: 'Carries 1 squadron of Scavengers.' },
+};
+export const UPGRADE_ORDER = Object.keys(UPGRADES);
+
+// The ship type's numbers with its customizations applied (cached; no customizations = SHIPS[type]).
+const modCache = {};
+export function defWithMods(type, mods) {
+  const base = SHIPS[type];
+  const list = (mods || []).filter((m) => UPGRADES[m]?.ships.includes(type)).sort();
+  if (!base || !list.length) return base;
+  const key = `${type}|${list.join(',')}`;
+  if (modCache[key]) return modCache[key];
+  const def = { ...base, weapons: [...base.weapons], mods: list };
+  for (const m of list) {
+    const u = UPGRADES[m];
+    def.weapons.push(...(u.weapons || []));
+    def.power += u.power || 0;
+    if (u.squadrons) { def.squadrons = (def.squadrons || 0) + u.squadrons; def.carries = [...(def.carries || []), ...(u.carries || [])]; }
+  }
+  def.arcs = groupArcs(def.weapons);
+  return (modCache[key] = def);
 }
 
 // Movement and collision numbers (rules §3, §6).
@@ -302,7 +329,7 @@ export const TIMING = {
 export const DICE_COLORS = {
   torpedo: '#ffa94d', smallLaser: '#ff8787', largeLaser: '#fa5252', ion: '#8ce1ff', lance: '#da77f2',
   maw: '#ff922b', smallRail: '#74c0fc', largeRail: '#4dabf7', darkLance: '#9775fa', critDisruptor: '#e599f7', acid: '#a9e34b',
-  autocannon: '#dee2e6', breaching: '#ff6b6b', disruptor: '#ffe066', boarding: '#ff922b',
+  autoTurret: '#dee2e6', autoCannon: '#8ce99a',
   pd: '#ffd43b', squad: '#b197fc',
 };
 export const diceColor = (weapon, pd = false) => (pd ? DICE_COLORS.pd : DICE_COLORS[weapon] || DICE_COLORS.squad);
@@ -399,6 +426,9 @@ export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targ
 //   fireRotate    – may rotate this many clicks in place during Plan Fire (before shooting)
 //   hull / speed / clicks – + max hull, + max speed, + turn clicks per segment
 //   fireproof     – Hull Fire never damages this ship (it can still catch the critical)
+//   stubborn      – once per game: survives being destroyed with 1 hull; no more damage that round
+//   weaponBoost   – { weaponId: { shots, accuracy } }: extra shots / accuracy for that weapon
+//   fiveArms      – each round one aimed weapon (picked in Plan Fire) fires twice, no extra Power
 //   packLeader    – { types, accuracy, range }: the side's OTHER ships of `types` within `range`
 //                   (a RANGE_BANDS id) of this ship get + accuracy (several leaders don't stack)
 export const CAPTAINS = {
@@ -426,6 +456,13 @@ export const CAPTAINS = {
     desc: '+1 max speed and +1 turn click per segment.' },
   kairos: { name: 'Kairos', short: 'Kairos', icon: '⏳', cost: 1, ships: ['torpedoBoat'], fireRotate: 1,
     desc: 'In Plan Fire you may rotate your ship 1 click (15°) left or right before shooting, to line up the torpedo or turn a stronger shield toward the enemy. Not while the Maneuvering Thrusters are damaged.' },
+  // ----- Pirates -----
+  mal: { name: 'Mal Reynolds', short: 'Mal', icon: '🔨', cost: 2, ships: ['firefly'], stubborn: true,
+    desc: 'Too Stubborn to Die: once per game, the first time this ship would be destroyed it survives with 1 hull, and all other damage to it that round is cancelled.' },
+  liuBei: { name: 'Sergeant Liu Bei', short: 'Liu Bei', icon: '🎖', cost: 2, ships: ['rouge'], weaponBoost: { autoCannon: { shots: 1, accuracy: 1 } },
+    desc: 'The Auto Cannon gets +1 shot and +1 accuracy.' },
+  flerf: { name: 'Flerf', short: 'Flerf', icon: '⭐', cost: 3, ships: ['freeTrader'], fiveArms: true,
+    desc: 'Five Arms: every round, one weapon you aim fires twice (no extra Power). You pick which in Plan Fire.' },
 };
 export const CAPTAIN_ORDER = Object.keys(CAPTAINS);
 
@@ -443,8 +480,9 @@ export const CRITICALS = {
 export const CRIT_POOL = ['hull', 'weapons', 'thrusters', 'shieldGen', 'engines', 'bridge'];
 
 // Squadrons (ships v3). A squadron is a group of `craft`, drawn as one small circle each. Each
-// craft has 1 hull and `shield` (0 or 1) shield: a hit first knocks off a craft's shield, the next
-// one destroys it. Every living craft fires one shot per round (close range) for `damage`.
+// craft has `craftHull` hull (default 1) and `shield` (0 or 1) shield: hits take the shield first,
+// then hull; a single hit of shield + craftHull damage or more destroys a craft outright. Every
+// living craft fires one shot per round (close range) for `damage`.
 // Bought in fleet building to fill a carrier (`SHIPS[type].squadrons` slots). `role` decides
 // what it shoots when it has no order to follow:
 //   fighter  – the nearest enemy squadron in close range, else the nearest enemy ship
@@ -463,6 +501,9 @@ export const SQUADRONS = {
   swarmers: { name: 'Swarmers', short: 'Swarmers', faction: 'djnzuar', role: 'fighter', cost: 3, craft: 6, shield: 0, speed: 16,
     weapon: 'Bite Cannon', damage: 1, accuracy: -1, crit: false,
     desc: 'A big, fast swarm with no shields. Hunts enemy squadrons first.' },
+  scavengers: { name: 'Scavengers', short: 'Scavengers', faction: 'pirates', role: 'fighter', cost: 3, craft: 3, shield: 1, craftHull: 2, speed: 12,
+    weapon: 'Scrap Cannon', damage: 1, crit: false,
+    desc: 'Three armored scrap-fighters: each takes 3 hits to bring down. Hunt enemy squadrons first.' },
 };
 export const SQUADRON_ROLES = {
   fighter: { name: 'Fighter', letter: 'F' },

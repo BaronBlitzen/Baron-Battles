@@ -5,14 +5,14 @@ import { escapeHtml } from '../../supabase.js';
 import {
   FACTIONS, FACTION_ORDER, CLASSES, WEAPONS, ZONES, ARCS, ARC_DEFS, ZONE_NAMES, RANGE_BANDS, SHIPS, FLEET,
   STANCES, CRITICALS, SQUADRONS, SQUADRON_ROLES, SQUADRON, SQUAD_ORDERS, SQUAD_ORDER_LIST,
-  HIT, SPECIALS, CAPTAINS, CRIT_POOL,
+  HIT, SPECIALS, CAPTAINS, CRIT_POOL, UPGRADES,
 } from './data.js';
 import {
   classOf, shipDef, corners, speedOptions, maxClicks, segmentClicks, defaultMovePlan, planWaypoints, pathHazard,
   weaponTargets, weaponUsedUp, defaultFirePlan, arcWeapons, factionShipTypes, pointShare, fleetCost, buyProblem,
   stanceOptions, shipStances, maxSpeed, isSquad, squadDef, unitName, endTurnClicks, weaponOffline, boostCap,
   carrierSlots, isCarrier, squadBuyProblem, critCount, shipPower, planPower, weaponPower,
-  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus,
+  carrierSquadTypes, squadOrderAllowed, specialLeft, holdTargets, accuracyOf, packBonus, upgradeChoices, upgradeProblem,
   captainOf, captainChoices, captainProblem, canAddWild, maxHull, stanceOf, sanitizeRotate, rotatedShip, sanitizeFirePlan,
 } from './rules.js';
 import { faceImg } from './portraits.js';
@@ -55,6 +55,7 @@ export function mount({ container, me, sendInput }) {
   let repairDraft = {}; // shipId -> Damage Control choice { kind, zones? } (none = default)
   let holdDraft = {}; // shipId -> Smuggler's Hold choice { target, kind } (none = not used)
   let critDraft = {}; // shipId -> critical system id (Seir-Seir; none = random)
+  let fiveDraft = {}; // shipId -> "arc:index" that fires twice (Flerf's Five Arms; none = strongest)
   let rotateDraft = {}; // shipId -> clicks the ship turns before shooting (Kairos; none = 0)
   let selShip = null;
   let selSeg = 0;
@@ -92,6 +93,7 @@ export function mount({ container, me, sendInput }) {
     repairDraft = {};
     holdDraft = {};
     critDraft = {};
+    fiveDraft = {};
     rotateDraft = {};
     for (const s of myLiving()) {
       moveDraft[s.id] = defaultMovePlan(s);
@@ -131,6 +133,8 @@ export function mount({ container, me, sendInput }) {
       out.push(`Stance this round: ${s.stance.wild ? `${STANCES.wild.icon} ${STANCES.wild.name} + ` : ''}${st.icon} ${escapeHtml(st.name)}${s.stance.zone ? ` (${ZONE_NAMES[s.stance.zone]})` : ''}`);
     }
     if (captainOf(s)) out.push(`${captainHtml(s)}: ${escapeHtml(captainOf(s).desc)}`);
+    if (captainOf(s)?.stubborn) out.push(s.lastStand ? '🔨 Too Stubborn to Die: saved this round, no more damage until next round' : s.stubbornUsed ? '🔨 Too Stubborn to Die: used' : '🔨 Too Stubborn to Die: ready');
+    for (const m of s.mods || []) out.push(`${UPGRADES[m].icon} ${escapeHtml(UPGRADES[m].name)}: ${escapeHtml(UPGRADES[m].desc)}`);
     for (const c of s.crits || []) {
       const cd = CRITICALS[c.id];
       if (!cd) continue;
@@ -236,15 +240,35 @@ export function mount({ container, me, sendInput }) {
       <p class="sbp-small"><a href="docs/ship-cards.html#${type}" target="_blank" rel="noopener">📇 See the ship card</a></p>`;
   }
 
-  // Squadron types a carrier can hold (shown in the carrier's details).
-  function squadronLines(type) {
+  // Squadron types a carrier can hold (shown in the carrier's details). `mods` = customizations.
+  function squadronLines(type, mods) {
+    const n = carrierSlots(type, mods);
     return `
-      <p class="sbp-small"><b>Carries up to ${carrierSlots(type)} squadrons</b> (bought below the ship in My fleet):</p>
-      <ul class="sbp-weapons">${carrierSquadTypes(type).map((t) => {
+      <p class="sbp-small"><b>Carries up to ${n} squadron${n === 1 ? '' : 's'}</b> (bought below the ship in My fleet):</p>
+      <ul class="sbp-weapons">${carrierSquadTypes(type, mods).map((t) => {
         const q = SQUADRONS[t];
         const extras = [q.accuracy ? `${q.accuracy > 0 ? '+' : '−'}${Math.abs(q.accuracy)} accuracy` : '', q.ignoreShields ? 'ignores shields' : '', q.crit ? 'crits on 10' : ''].filter(Boolean);
-        return `<li><b>${escapeHtml(q.name)}</b> <small>${SQUADRON_ROLES[q.role].name} · ${q.cost} pts · ${q.craft} craft (1 hull${q.shield ? ', 1 shield' : ', no shield'} each) · speed ${q.speed} u · ${escapeHtml(q.weapon)}: ${q.damage} dmg per craft, close range${extras.length ? ` · ${extras.join(', ')}` : ''}</small><br><span>${escapeHtml(q.desc)}</span></li>`;
+        return `<li><b>${escapeHtml(q.name)}</b> <small>${SQUADRON_ROLES[q.role].name} · ${q.cost} pts · ${q.craft} craft (${q.craftHull || 1} hull${q.shield ? ', 1 shield' : ', no shield'} each) · speed ${q.speed} u · ${escapeHtml(q.weapon)}: ${q.damage} dmg per craft, close range${extras.length ? ` · ${extras.join(', ')}` : ''}</small><br><span>${escapeHtml(q.desc)}</span></li>`;
       }).join('')}</ul>`;
+  }
+
+  // Customizations for a ship in My fleet (Free Trader): fit / remove buttons.
+  function modRow(e, i, info) {
+    const choices = upgradeChoices(e.type);
+    if (!choices.length) return '';
+    const mods = e.mods || [];
+    return `
+      <li class="sbp-wingrow">
+        <small>Customizations${mods.length ? `: <b>${mods.map((m) => `${UPGRADES[m].icon} ${escapeHtml(UPGRADES[m].name)}`).join(', ')}</b> · tap to remove` : ' (optional upgrades)'}</small>
+        <div class="sbp-wingbuy">
+          ${choices.map((m) => {
+            const on = mods.includes(m);
+            const p = on ? null : upgradeProblem(m, info.mine, i, info.share);
+            return `<button data-act="mod" data-i="${i}" data-m="${m}" data-on="${on ? 0 : 1}" ${p ? 'disabled' : ''} class="${on ? 'on' : ''}" title="${escapeHtml(UPGRADES[m].desc)}">${on ? '✓' : '+'} ${UPGRADES[m].icon} ${escapeHtml(UPGRADES[m].short)}<small>${on ? `−${UPGRADES[m].cost}` : UPGRADES[m].cost} pts</small></button>`;
+          }).join('')}
+        </div>
+        <small class="muted">${choices.map((m) => `${UPGRADES[m].icon} ${escapeHtml(UPGRADES[m].name)}: ${escapeHtml(UPGRADES[m].desc)}`).join('<br>')}</small>
+      </li>`;
   }
 
   // Captain choices for a ship in My fleet (or, with `slot`, one of its squadrons).
@@ -272,13 +296,13 @@ export function mount({ container, me, sendInput }) {
 
   // Squadron slots under a carrier in My fleet: remove chips + buy buttons.
   function wingRow(e, i, info) {
-    const slots = carrierSlots(e.type);
+    const slots = carrierSlots(e.type, e.mods);
     if (!slots) return '';
     return `
       <li class="sbp-wingrow">
         <small>Squadrons ${e.wing.length}/${slots}${e.wing.length ? ' · tap one to remove it' : ''}</small>
         ${e.wing.length ? `<div class="sbp-wingchips">${e.wing.map((q, k) => `<button data-act="removeSquad" data-i="${i}" data-k="${k}">${escapeHtml(SQUADRONS[q].short)}${e.wingCaptains?.[k] ? ` ${faceImg(e.wingCaptains[k], 20)}` : ''} ✕</button>`).join('')}</div>` : ''}
-        ${e.wing.length < slots ? `<div class="sbp-wingbuy">${carrierSquadTypes(e.type).map((t) => {
+        ${e.wing.length < slots ? `<div class="sbp-wingbuy">${carrierSquadTypes(e.type, e.mods).map((t) => {
           const p = squadBuyProblem(t, info.myTeam, info.mine, i, info.share);
           return `<button data-act="buySquad" data-i="${i}" data-t="${t}" ${p ? 'disabled' : ''}>+ ${escapeHtml(SQUADRONS[t].short)}<small>${SQUADRONS[t].cost} pts</small></button>`;
         }).join('')}</div>` : ''}
@@ -299,6 +323,7 @@ export function mount({ container, me, sendInput }) {
         <p class="sbp-desc">${escapeHtml(def.desc || '')}</p>
         <div class="sbp-stats">Hull ${def.hull} · Shields F${sh.front} L${sh.left} R${sh.right} Rr${sh.rear} · Speed ${def.speed[0]}–${def.speed[1]} · Turn clicks by speed ${Array.from({ length: def.speed[1] - def.speed[0] + 1 }, (_, i) => def.clicksAtSpeed?.[def.speed[0] + i] ?? def.clicks).join('/')} · ⚡${def.power} · Agility ${CLASSES[def.class].agility}${def.squadrons ? ` · ✈ Carrier (${def.squadrons} squadrons)` : ''}${def.special ? ` · ${SPECIALS[def.special].icon} ${escapeHtml(SPECIALS[def.special].name)}` : ''}</div>
         ${open ? weaponLines(def, type) : ''}
+        ${open && upgradeChoices(type).length ? `<p class="sbp-small"><b>Customizations</b> (bought below the ship in My fleet):<br>${upgradeChoices(type).map((m) => `${UPGRADES[m].icon} <b>${escapeHtml(UPGRADES[m].name)}</b> (${UPGRADES[m].cost} pts): ${escapeHtml(UPGRADES[m].desc)}`).join('<br>')}</p>` : ''}
         <button class="sbp-buy" data-act="buy" data-t="${type}" ${problem ? 'disabled' : ''}>${problem ? escapeHtml(problem) : `Buy · ${def.cost} pts`}</button>
       </li>`;
   }
@@ -330,8 +355,8 @@ export function mount({ container, me, sendInput }) {
           <h3 class="sbp-h">My fleet</h3>
           ${mine.length ? `<ul class="sbp-claims">
             ${mine.map((e, i) => `<li class="mine"><div><b>${escapeHtml(SHIPS[e.type].name)}</b>
-              <small>${escapeHtml(CLASSES[SHIPS[e.type].class].name)} · ${SHIPS[e.type].cost} pts${e.captain ? ` + ${CAPTAINS[e.captain].cost} pts captain` : ''}${e.wing.length ? ` + ${fleetCost([{ type: '', wing: e.wing, wingCaptains: e.wingCaptains }])} pts squadrons` : ''}</small></div>
-              <button data-act="remove" data-i="${i}">Remove</button></li>${captainRow(e, i, info)}${wingRow(e, i, info)}${e.wing.map((_, k) => captainRow(e, i, info, k)).join('')}`).join('')}
+              <small>${escapeHtml(CLASSES[SHIPS[e.type].class].name)} · ${SHIPS[e.type].cost} pts${e.captain ? ` + ${CAPTAINS[e.captain].cost} pts captain` : ''}${e.mods?.length ? ` + ${fleetCost([{ type: '', wing: [], mods: e.mods }])} pts customizations` : ''}${e.wing.length ? ` + ${fleetCost([{ type: '', wing: e.wing, wingCaptains: e.wingCaptains }])} pts squadrons` : ''}</small></div>
+              <button data-act="remove" data-i="${i}">Remove</button></li>${captainRow(e, i, info)}${modRow(e, i, info)}${wingRow(e, i, info)}${e.wing.map((_, k) => captainRow(e, i, info, k)).join('')}`).join('')}
           </ul>` : '<p class="muted sbp-small">No ships yet. Buy some below. Unspent points are lost.</p>'}
           <button class="big-btn sbp-ready ${isReady() ? 'ghost' : ''}" data-act="setupReady" ${mine.length && !over ? '' : 'disabled'}>
             ${isReady() ? '✔ Ready (tap to undo)' : over ? 'Over budget' : mine.length ? 'Ready' : 'Buy a ship first'}</button>
@@ -503,7 +528,7 @@ export function mount({ container, me, sendInput }) {
   // "3/4 craft, 2 shielded".
   function craftText(q) {
     const def = squadDef(q);
-    return `${q.hull}/${def.craft} craft${def.shield ? `, ${q.shields ?? 0} shielded` : ''}`;
+    return `${q.hull}/${def.craft} craft${def.shield ? `, ${q.shields ?? 0} shielded` : ''}${q.hurt ? `, ${q.hurt} damaged` : ''}`;
   }
 
   // Orders this squadron may get now (Stay docked only while docked, Return only once launched).
@@ -685,6 +710,26 @@ export function mount({ container, me, sendInput }) {
       </div>`;
   }
 
+  // Flerf's Five Arms: which aimed weapon fires twice this round (default: the strongest one).
+  function fivePicker(s) {
+    if (!captainOf(s)?.fiveArms) return '';
+    const aimed = [];
+    for (const a of draftPlan(s.id)) for (const wi of Object.keys(a.targets)) {
+      const w = arcWeapons(s, a.arc)[wi];
+      if (w && !WEAPONS[w.weapon].once) aimed.push({ key: `${a.arc}:${wi}`, w });
+    }
+    const cur = aimed.some((x) => x.key === fiveDraft[s.id]) ? fiveDraft[s.id] : '';
+    return `
+      <div class="sbp-arc on">
+        <div class="sbp-arc-head"><b>${captainHtml(s)} · ⭐ Five Arms</b><small>this weapon fires twice…</small></div>
+        <div class="sbp-hunt">
+          <button class="sbp-target ${cur ? '' : 'on'}" data-act="fivePick" data-k=""><span>Auto: the strongest one aimed</span><span>${cur ? '' : '✔'}</span></button>
+          ${aimed.map(({ key, w }) => `<button class="sbp-target ${cur === key ? 'on' : ''}" data-act="fivePick" data-k="${key}"><span>${escapeHtml(WEAPONS[w.weapon].name)}</span><span>${cur === key ? '✔ ×2' : ''}</span></button>`).join('')}
+        </div>
+        ${aimed.length ? '' : '<p class="sbp-small muted">Aim a weapon first.</p>'}
+      </div>`;
+  }
+
   // Fire draft as a plan: [{ arc, targets }].
   const draftPlan = (shipId) => Object.entries(fireDraft[shipId] || {})
     .filter(([, m]) => Object.keys(m).length).map(([arc, targets]) => ({ arc, targets }));
@@ -757,6 +802,7 @@ export function mount({ container, me, sendInput }) {
         ${rotatePicker(s)}
         ${repairPicker(s)}
         ${critPicker(s)}
+        ${fivePicker(s)}
         ${holdPicker(s)}
         <canvas class="sbp-map"></canvas>
         ${ARCS.filter((arc) => arcWeapons(s, arc).length).map((arc) => `
@@ -1157,7 +1203,7 @@ export function mount({ container, me, sendInput }) {
         : Object.entries(fireDraft[s.id] || {}).filter(([, m]) => Object.keys(m).length).map(([arc, targets]) => ({ arc, targets }));
     }
     const msg = { type: state.phase, round: state.round, ships };
-    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; msg.rotates = { ...rotateDraft }; }
+    if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; msg.rotates = { ...rotateDraft }; msg.fiveArms = { ...fiveDraft }; }
     return msg;
   }
 
@@ -1215,9 +1261,11 @@ export function mount({ container, me, sendInput }) {
       fitDraft(shipById(selShip), d);
       render();
     }
+    else if (act === 'mod') sendInput({ type: 'mod', index: Number(b.dataset.i), mod: b.dataset.m, on: b.dataset.on === '1' });
     else if (act === 'captain') sendInput({ type: 'captain', index: Number(b.dataset.i), captain: b.dataset.c || null });
     else if (act === 'squadCaptain') sendInput({ type: 'squadCaptain', index: Number(b.dataset.i), slot: Number(b.dataset.k), captain: b.dataset.c || null });
     else if (act === 'rotate') setRotate(Number(b.dataset.r));
+    else if (act === 'fivePick') { if (b.dataset.k) fiveDraft[selShip] = b.dataset.k; else delete fiveDraft[selShip]; render(); }
     else if (act === 'critPick') { if (b.dataset.c) critDraft[selShip] = b.dataset.c; else delete critDraft[selShip]; render(); }
     else if (act === 'endTurn') { e.stopPropagation(); turnEnd(Number(b.dataset.d)); }
     else if (act === 'mine') { const d = moveDraft[selShip]; d.mine = !d.mine; render(); }
@@ -1252,7 +1300,7 @@ export function mount({ container, me, sendInput }) {
         const info = setupInfo();
         if (!info.myTeam) return;
         for (let j = 0; j < info.mine.length; j++) {
-          const t = carrierSquadTypes(info.mine[j].type).find((x) => !squadBuyProblem(x, info.myTeam, info.mine, j, info.share));
+          const t = carrierSquadTypes(info.mine[j].type, info.mine[j].mods).find((x) => !squadBuyProblem(x, info.myTeam, info.mine, j, info.share));
           if (t) { sendInput({ type: 'buySquad', index: j, squadType: t }); break; }
         }
       } else if (k === 'x') {

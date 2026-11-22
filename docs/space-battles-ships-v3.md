@@ -3,7 +3,7 @@
 **Draft, not built yet.** When built, this replaces the Protectorate and Djn'zuar ships, weapons,
 squadrons, stances and criticals in `space-battles-weapons-v2.md`. Everything in v2 that isn't
 mentioned here stays the same (Power, d10 to-hit on 4+ plus agility, natural 10 always hits,
-shields first then hull, shields don't recharge on their own). Pirates are not changed yet.
+shields first then hull, shields don't recharge on their own). The Pirates rework is in the Pirates section at the end.
 
 ✅ = decided by the user. ⚠ = my assumption, needs the user's OK before building.
 
@@ -187,7 +187,7 @@ A captain is an upgrade bought for one ship (or one squadron) during fleet build
 
 - ✅ **One captain per ship.** The same captain can be on **several ships** in a fleet.
 - ✅ A captain is **lost with its ship**.
-- ✅ Pirates get captains later (with the Pirate rework).
+- ✅ Pirate captains: see the Pirates section.
 
 | Captain | Goes on | Cost | Ability |
 |---|---|---|---|
@@ -217,3 +217,60 @@ When a side has more than one ship of the same type, they're labeled **A, B, C�
 - Point costs above are Claude's first pass (the user said "you choose"). Adjust after playtesting.
 - Small assumptions still marked ⚠ above: one shot per weapon, Torpedo + Targeted Attack don't
   stack (still 9–10), and a ship can pick no stance.
+
+## Pirates ✅ (rework, step 1 of 3)
+
+Steps 2 (missiles) and 3 (Xar Teleporter) are still to come. The Outrider and the old Pirate "home"
+rule (extra speed change at half hull) are removed. The old Pirate weapons (Autocannon Turret,
+Breaching Cannon, Disruptor, Boarding Harpoon) and Smuggler's Hold are gone.
+
+### Weapons
+
+| Weapon | ⚡ | Reach | Arc | Damage | Notes |
+|---|---|---|---|---|---|
+| Auto Turret | 2 | Medium | Turret 360° | 1 × 2 shots | |
+| Auto Cannon | 3 | Medium | **Forward 45°** (new arc, ±22.5°) | 1 × 5 shots | |
+| Flechette Gun | free | Close | Turret | 1 | Point-defense. |
+| Missile Launcher | 1 | — | 360° | 2, ignores shields | **Step 2 (not built yet).** 5 missiles per Free Trader. Always hits unless point-defense shoots it down (1 hp). Hits the same round if the target is within 16 u, otherwise keeps flying 16 u a round. |
+
+### Ships
+
+| Ship | Class | Cost | Hull | Shields | ⚡ | Speed | Clicks | Weapons | PD |
+|---|---|---|---|---|---|---|---|---|---|
+| Firefly | Corvette | 9 | 8 | 1/1/1/0 | 2 | 1–4 | 3/3/3/2 | Auto Turret | Flechette ×1 |
+| Rouge | Corvette | 12 | 6 | 2/2/2/1 | 4 | 2–5 | 3/3/2/2 | Auto Cannon, Auto Turret | Flechette ×1 |
+| Free Trader | Cruiser | 14 | 9 | 2/2/2/1 | 5 | 1–4 | 3/2/1/1 | Auto Turret ×2 (Missile Launcher ×2 in step 2) | Flechette ×2 |
+
+- Rouge: 4 Power can't fire the Auto Cannon (3) and the Auto Turret (2) together.
+- Turning: Firefly like the Torpedo Boat, Rouge like the Samurai, Free Trader like the Escort.
+
+### Free Trader customizations (bought in fleet building, on top of a captain)
+
+| Customization | Cost | Effect |
+|---|---|---|
+| Illegal Dark Lance | 5 | Adds a Dark Lance (spinal, long, 5 damage) and +3 Power to fire it. |
+| Scavenger Hold | 1 | Carries 1 squadron of Scavengers. Removing it removes the squadron. |
+| Xar Teleporter | 2 | **Step 3 (not built yet).** Once per game, Teleport stance: after the Move, tap anywhere unoccupied on the map and pick a facing; speed is kept. |
+
+### Scavengers (squadron)
+
+| Squadron | Cost | Craft | Shield / Hull each | Speed | Weapon | Damage |
+|---|---|---|---|---|---|---|
+| Scavengers | 3 | 3 | 1 / **2** | 12 u | Scrap Cannon | 1 |
+
+- Each craft takes 3 small hits (shield, then 2 hull). A single hit of 3+ damage destroys a craft
+  outright. Damaged craft are drawn faded on the TV.
+
+### Captains
+
+| Captain | Goes on | Cost | Ability |
+|---|---|---|---|
+| Mal Reynolds | Firefly | 2 | **Too Stubborn to Die:** once per game, the first time the Firefly would be destroyed it stays at 1 hull, and all other damage to it that round is cancelled (more shots, collisions, Hull Fire, acid). It starts the next Move with 1 hull. |
+| Sergeant Liu Bei | Rouge | 2 | Auto Cannon +1 shot and +1 accuracy. |
+| Flerf | Free Trader | 3 | **Five Arms:** each round one aimed weapon fires twice (no extra Power), the Dark Lance included. Picked in Plan Fire; with no pick, the strongest aimed weapon. |
+
+### Point-defense split (all factions) ✅
+
+When several squadrons (or, later, missiles) attack the same ship, its point-defense shots are split
+between them, nearest first, taking turns (3 shots at 2 attackers = 2 + 1). Those shots still land
+before the attackers fire.

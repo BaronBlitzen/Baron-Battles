@@ -15,7 +15,7 @@
   .card canvas { display: block; margin: 0 auto 8px; image-rendering: pixelated; }
   .card b { display: block; font-size: 14px; }
   .card span { font-size: 12px; color: #a9b6cc; }
-  .prot h2 { color: #4dabf7; } .djn h2 { color: #ff922b; }
+  .prot h2 { color: #4dabf7; } .djn h2 { color: #ff922b; } .pir h2 { color: #51cf66; }
 </style>
 </head>
 <body>
@@ -23,6 +23,7 @@
 <p class="note">Drawn from <code>js/games/space-battles/sprites.js</code>. Shown at 6× size, nose up.</p>
 <div class="prot"><h2>Human Protectorate</h2><div class="row" id="prot"></div></div>
 <div class="djn"><h2>Djn'zuar</h2><div class="row" id="djn"></div></div>
+<div class="pir"><h2>Pirates</h2><div class="row" id="pir"></div></div>
 <script type="module">
   import { SPRITES, drawSprite } from '../js/games/space-battles/sprites.js';
   const groups = {
@@ -32,6 +33,8 @@
     djn: [['grunt', 'Grunt', 'Corvette'], ['samurai', 'Samurai', 'Destroyer'],
           ['brute', 'Brute', 'Cruiser'], ['queen', 'Queen', 'Battleship'],
           ['swarmers', 'Swarmers', 'Squadron']],
+    pir: [['firefly', 'Firefly', 'Corvette'], ['rouge', 'Rouge', 'Corvette'], ['freeTrader', 'Free Trader', 'Cruiser'],
+          ['scavengers', 'Scavengers', 'Squadron']],
   };
   const SCALE = 6;
   for (const [el, list] of Object.entries(groups)) {
