@@ -21,9 +21,7 @@ export const PORTRAIT_PALETTE = {
   c: '#ff8a5c', y: '#ffe8a3', // starfish coral and spots (shade: 'o' from PALETTE)
   n: '#6c7385', // light outline on black fur (Rzen)
   j: '#7ac74f', J: '#4e8a32', a: '#a8d8ea', // frog skin, frog shade, helmet glass (Kaj'ik)
-  p: '#f4a7c4', q: '#d77aa0', // pink dolphin and its shade (Fiona)
-  r: '#1f4e8c', // blue helmet-bubble glass (Shuna; the rim is 'b')
-};
+  p: '#f4a7c4', q: '#d77aa0', // pink dolphin and its shade (Fiona)};
 
 export const PORTRAIT_SIZE = 24;
 
@@ -52,32 +50,32 @@ const GRUNT_SHOULDERS = [
 
 export const PORTRAITS = {
   // ---------- Human Protectorate ----------
-  // Dolphin (side view) with its whole head inside a round blue space-helmet bubble.
+  // Dolphin in a pilot helmet, visor up (side view).
   shuna: [
-    '.........bbbbbb.........',
-    '.......bbrrrrrrbb.......',
-    '.....bbrrrrrrrrrrbb.....',
-    '....brErrrrrrrrrrrrb....',
-    '...brErrrrrrrrrrrrrrb...',
-    '...brrrrLLLLLrrrrrrrb...',
-    '..brrrLLLLLLLLLrrrrrrb..',
-    '..brrLLLLLLLLLLLrrrrrb..',
-    '..brLLLLLLLLLekLLrrrrb..',
-    '..brLLLLLLLLLLLLLLLLLb..',
-    '.brrLLLLLLLLLLLkkkkkkrb.',
-    '..brrEEEEEEEEEEEEEEErb..',
-    '..brrEEEEEEEEEEEErrrrb..',
-    '..brrllllllllllrrrrrrb..',
-    '..brrrlllllllrrrrrrrrb..',
-    '...brrrrrrrrrrrrrrrrb...',
-    '...brrrrrrrrrrrrrrrrb...',
-    '....brrrrrrrrrrrrrrb....',
-    '.....bbrrrrrrrrrrbb.....',
-    '.......bbrrrrrrbb.......',
-    '.........bbbbbb.........',
-    '......WWWWWWWWWWWW......',
-    '...BBBBBBRRRRRRBBBBBB...',
-    '.BBBBBBBBBBBBBBBBBBBBBB.',
+    '........................',
+    '......WWWWWWWW..........',
+    '....WWWWWWWWWWWW........',
+    '...WWRRRRRRRRRRWW.......',
+    '..WWWWWWWWWWWWWWWW......',
+    '..WWWWWWWWWWCCCCCCW.....',
+    '..WWWWWWWWWCCCCCCCW.....',
+    '..LLLLLLLLLLLLLLLLLL....',
+    '.LLLLLLLLLLLLLLLLLLLL...',
+    '.LLLLLLLLLLLLLekLLLLLL..',
+    '.LLLLLLLLLLLLLkkLLLLLLL.',
+    '.lLLLLLLLLLLLLLLLLLLLLLL',
+    '.lLLLLLLLLLkLLLLLLLLLLLL',
+    '.lLLLLLLLLLLkkkkkkkkkkkk',
+    '.llLLLLLLLEEEEEEEEEEEEE.',
+    '..llLLLLEEEEEEEEEEEEEE..',
+    '..llLLEEEEEEEEEEEE......',
+    '...llLEEEEEEEEE.........',
+    '....llEEEEEEE...........',
+    '....BBBBBBBBBB..........',
+    '...BBBBRRBBBBBB.........',
+    '..BBBBBBBBBBBBBB........',
+    '.BBBBBBBBBBBBBBBB.......',
+    'BBBBBBBBBBBBBBBBBB......',
   ],
   // Old veteran: gray mustache, navy cap.
   verity: mirror([
