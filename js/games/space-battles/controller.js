@@ -103,6 +103,9 @@ export function mount({ container, me, sendInput }) {
     selSeg = 0;
     selRow = 0;
     notice = '';
+    // The untouched default plan isn't sent as a draft (the TV uses the same defaults anyway).
+    clearTimeout(draftTimer);
+    lastDraft = JSON.stringify(planMsg());
   }
 
   // ---------- Pieces ----------
@@ -1024,6 +1027,7 @@ export function mount({ container, me, sendInput }) {
     if (bar) root.insertAdjacentHTML('beforeend', bar);
     updateTimer();
     drawMap();
+    syncDraft();
   }
 
   function renderView() {
@@ -1145,16 +1149,41 @@ export function mount({ container, me, sendInput }) {
     render();
   }
 
-  function send() {
+  // This player's whole plan for the current planning step, as sent to the TV.
+  function planMsg() {
     const ships = {};
     for (const s of myLiving()) {
       ships[s.id] = state.phase === 'planMove' ? moveDraft[s.id]
-        : Object.entries(fireDraft[s.id]).filter(([, m]) => Object.keys(m).length).map(([arc, targets]) => ({ arc, targets }));
+        : Object.entries(fireDraft[s.id] || {}).filter(([, m]) => Object.keys(m).length).map(([arc, targets]) => ({ arc, targets }));
     }
-    const msg = { type: state.phase, round: state.round, ready: true, ships };
+    const msg = { type: state.phase, round: state.round, ships };
     if (state.phase === 'planFire') { msg.repairs = { ...repairDraft }; msg.holds = { ...holdDraft }; msg.critPicks = { ...critDraft }; msg.rotates = { ...rotateDraft }; }
-    sendInput(msg);
+    return msg;
+  }
+
+  function send() {
+    clearTimeout(draftTimer);
+    sendInput({ ...planMsg(), ready: true });
     buzz(20);
+  }
+
+  // While planning, the TV also gets this phone's latest choices (about a second after they change),
+  // so if the timer runs out before Send is tapped they're still used (ships, squadron orders,
+  // targets). Only sent when something changed, to keep messages few.
+  let draftTimer = 0;
+  let lastDraft = '';
+  function syncDraft() {
+    const planning = (state.phase === 'planMove' || state.phase === 'planFire') && myLiving().length && !isReady();
+    if (!planning || draftKey !== state.phaseKey) return;
+    const json = JSON.stringify(planMsg());
+    if (json === lastDraft) return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => {
+      if (isReady() || draftKey !== state.phaseKey) return;
+      const now = JSON.stringify(planMsg());
+      lastDraft = now;
+      sendInput({ ...JSON.parse(now), ready: false, draft: true });
+    }, 900);
   }
 
   root.addEventListener('click', (e) => {
@@ -1293,6 +1322,7 @@ export function mount({ container, me, sendInput }) {
     },
     destroy() {
       clearInterval(timer);
+      clearTimeout(draftTimer);
       stopRollTimers();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onResize);

@@ -535,8 +535,11 @@ export function start({ container, players, setPhoneState, onExit }) {
     const kind = msg.type === 'planMove' ? 'planMove' : 'planFire';
     if (phase !== kind || msg.round !== round) return;
     const store = kind === 'planMove' ? movePlans : firePlans;
-    if (!msg.ready) {
-      delete store[id];
+    // A draft (ready: false, draft: true) is the phone's latest unsent choices: it's stored and
+    // used if the timer runs out before the player taps Send, but the player isn't marked ready.
+    if (msg.draft && ready[id]) return;
+    if (!msg.ready && !msg.draft) {
+      // "Change orders": no longer ready, but the plan stays as a draft in case time runs out.
       delete ready[id];
       pushState();
       return;
@@ -567,6 +570,7 @@ export function start({ container, players, setPhoneState, onExit }) {
         if (rot) rotatePlans[id][s.id] = rot;
       }
     }
+    if (msg.draft) return;
     ready[id] = true;
     pushState();
     checkAllReady();
@@ -595,7 +599,8 @@ export function start({ container, players, setPhoneState, onExit }) {
     const stanceKills = new Set(); // ships destroyed by their own Violent Turn
     for (const s of ships) {
       if (!s.alive) continue;
-      plans[s.id] = (ready[s.owner] && movePlans[s.owner]?.[s.id]) || defaultMovePlan(s);
+      // Sent orders, else the phone's latest draft (timer ran out), else fly straight.
+      plans[s.id] = movePlans[s.owner]?.[s.id] || defaultMovePlan(s);
       // Reveal the stance: it lasts the whole round.
       s.stance = plans[s.id].stance;
       const st = STANCES[s.stance.id];
@@ -762,7 +767,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     // Kairos: ships turn in place first (their fire plans were checked with the new heading).
     const turned = [];
     for (const s of ships) {
-      const rot = s.alive && ready[s.owner] ? rotatePlans[s.owner]?.[s.id] : 0;
+      const rot = s.alive ? rotatePlans[s.owner]?.[s.id] : 0;
       if (!rot) continue;
       s.heading = rotatedShip(s, rot).heading;
       turned.push([s.id, rot]);
@@ -778,7 +783,7 @@ export function start({ container, players, setPhoneState, onExit }) {
     }
     for (const s of ships) {
       if (!s.alive) continue;
-      const planned = ready[s.owner] && firePlans[s.owner]?.[s.id];
+      const planned = firePlans[s.owner]?.[s.id]; // sent plan, or the latest draft on a timeout
       const plan = planned || defaultFirePlan(s, all, asteroids);
       for (const a of plan) {
         const weapons = arcWeapons(s, a.arc);

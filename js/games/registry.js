@@ -39,7 +39,7 @@ export const games = [
       '<b>Point-defense</b> (free, automatic) shoots first at enemy squadrons attacking its ship: craft it shoots down never fire. <b>Bombers</b> only attack ships and get one bombing run, then must fly back and dock to re-arm.',
       '<b>Hitting:</b> each shot rolls a 10-sided die. It hits on a 4 or higher (small, nimble ships are harder to hit). A 10 is a critical hit.',
       '<b>Damage:</b> hits take down the shield on the side facing the attacker first, then the hull. A critical that gets past the shields breaks one of the ship\'s systems.',
-      '<b>Timer:</b> each planning step lasts up to 2 minutes and ends early when everyone taps Ready. If you run out of time, your ships fly straight and fire on their own.',
+      '<b>Timer:</b> each planning step lasts up to 2 minutes and ends early when everyone taps Ready. If you run out of time, whatever you had set up so far is used (squadron orders too); ships you never touched fly straight and fire on their own.',
       '<b>Winning:</b> destroy the enemy fleet or make them surrender. After 9 rounds, the team with the most hull left wins.',
     ],
     // Extra pages in the help menu. They open inside the phone page, so you stay in the room.
