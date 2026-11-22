@@ -191,11 +191,12 @@ A captain is an upgrade bought for one ship (or one squadron) during fleet build
 
 | Captain | Goes on | Cost | Ability |
 |---|---|---|---|
-| **Shuna, Dolphin Warrior** | Torpedo Boat | 2 | Every round you may use **Wild Maneuvers AND another stance** (their effects add up). |
+| **Shuna, Dolphin Warrior** | Torpedo Boat | 2 | Every round you may use **Wild Maneuvers AND another stance** (their effects add up). Portrait: dolphin with its head in a blue helmet bubble. |
 | **Samuel Verity** | Escort | 2 | End of every round: **regain 1 shield**: front if it isn't full; else the side with fewer shields (left on a tie); else the rear. Not while the Shield Generator is damaged. |
 | **Shrike Leonitas** | Lancer | 3 | Unlocks the **Exterminate** stance. |
 | **Amelia Dangerfield** | Fleet Carrier | 2 | **Born Commander:** your squadrons always get Command's +1 accuracy (it doesn't stack with Command, so Command isn't offered), leaving you free to pick another stance. |
 | **Iceman Flaggs** | Fighters (squadron) | 1 | Squadron **+1 accuracy**, and the **first hit on it each round is ignored**. |
+| **Fiona** | Bombers (squadron) | 3 | ✅ Every bomb hit from this squadron **also causes a critical hit** (bombs ignore shields, so each damages a system). Shown as **Crit!** on the dice screen. Portrait: pink dolphin in a round helmet and white-and-orange suit. |
 | **Golbrik** | Grunt | 2 | Unlocks the **Reckless Attack** stance. |
 | **Jurddap** | Grunt | 1 | **Shrug It Off:** **+1 hull**, and **Hull Fire never hurts** this ship (it can still catch the critical; it just does no damage). |
 | **Bossim** | Grunt | 2 | **Pack Leader:** your side's **other Grunts** within **medium range** (8 u) of this ship get **+1 accuracy**. Several Bossims don't stack. |

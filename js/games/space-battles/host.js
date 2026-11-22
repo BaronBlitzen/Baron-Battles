@@ -849,7 +849,13 @@ export function start({ container, players, setPhoneState, onExit }) {
     const need = t.kind === 'decoy' ? Math.max(2, HIT.base - accuracyOf(q, ships)) : needToHit(q, null, t, ships);
     const canCrit = !isSquad(t) && !!def.crit;
     const r = rollShots(shots, need, HIT.critOn, canCrit);
-    return { band: 'close', shots, need, critOn: canCrit ? HIT.critOn : null, dice: r.dice, hits: r.hits, crits: r.crits, perHit: def.damage, ignoreShields: !!def.ignoreShields, effect: null, weapon: null, screen };
+    // Fiona: every hit on a ship is also a critical (bombs ignore shields, so each one damages a system).
+    const allCrit = !isSquad(t) && t.kind !== 'decoy' && !!captainOf(q)?.hitsCrit;
+    if (allCrit) {
+      r.crits = r.crits.map(() => true);
+      r.dice = r.dice.map(([v, res]) => [v, res === 'hit' ? 'crit' : res]);
+    }
+    return { band: 'close', shots, need, critOn: canCrit && !allCrit ? HIT.critOn : null, dice: r.dice, hits: r.hits, crits: r.crits, perHit: def.damage, ignoreShields: !!def.ignoreShields, effect: null, weapon: null, screen };
   }
 
   // Damages one of `ship`'s systems, picked at random among those not damaged yet (a repeat is

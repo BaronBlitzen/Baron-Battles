@@ -457,6 +457,7 @@ export const STANCE_ORDER = ['balanced', 'wild', 'repairs', 'shieldBoost', 'targ
 //   stance        – unlocks this stance (STANCES[..].captain)
 //   alwaysCommand – this carrier's squadrons always get Command's +1 accuracy (Command isn't offered)
 //   accuracy      – squadron: + accuracy; ignoreFirstHit – squadron ignores the first hit each round
+//   hitsCrit      – squadron: every hit on a ship also causes a critical hit
 //   pickCrit      – the player picks which system this ship's criticals damage (in Plan Fire)
 //   fireRotate    – may rotate this many clicks in place during Plan Fire (before shooting)
 //   hull / speed / clicks – + max hull, + max speed, + turn clicks per segment
@@ -477,6 +478,8 @@ export const CAPTAINS = {
     desc: 'Born Commander: your squadrons always get +1 accuracy (as if you used Command), so you\'re free to pick another stance.' },
   flaggs: { name: 'Iceman Flaggs', short: 'Iceman', icon: '🧊', cost: 1, squadrons: ['fighters'], accuracy: 1, ignoreFirstHit: true,
     desc: 'This Fighter squadron gets +1 accuracy, and the first hit on it each round is ignored.' },
+  fiona: { name: 'Fiona', short: 'Fiona', icon: '🌊', cost: 3, squadrons: ['bombers'], hitsCrit: true,
+    desc: 'Every bomb hit from this Bomber squadron also causes a critical hit.' },
   golbrik: { name: 'Golbrik', short: 'Golbrik', icon: '💥', cost: 2, ships: ['grunt'], stance: 'reckless',
     desc: 'Unlocks the Reckless Attack stance: take 1 hull damage, and all your weapons fire twice that round (no extra Power).' },
   jurddap: { name: 'Jurddap', short: 'Jurddap', icon: '🐸', cost: 1, ships: ['grunt'], hull: 1, fireproof: true,
