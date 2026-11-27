@@ -48,4 +48,26 @@ export const games = [
       { label: '🎖 Captains', href: 'docs/ship-cards.html#captains' },
     ],
   },
+  {
+    id: 'delve',
+    name: 'Delve the Black Labyrinth',
+    icon: '🕯️',
+    minPlayers: 1,
+    maxPlayers: 1, // 2–4 players (split screen) comes later
+    description: 'A dark-fantasy dungeon crawl. Enter rooms, survive what waits inside, find the Black Gate.',
+    host: () => import('./delve/host.js'),
+    controller: () => import('./delve/controller.js'),
+    rules: [
+      'Pick a <b>background</b> (Deserter, Noble\'s Heir, Pilgrim, Aspirant or Grave Robber), roll your stats (one free re-roll), and enter the Labyrinth.',
+      'The Labyrinth is a grid of <b>rooms</b>. Pick a door on your phone. When you enter a room, something happens: a monster, a trap, treasure, a stranger, a shrine or a merchant.',
+      '<b>Checks:</b> a d20 + your stat bonus against a target number. A 20 always succeeds and a 1 always fails.',
+      '<b>Fights</b> are turn-based: Attack, Skill, Item or Flee. Skills have cooldowns (in rounds). <i>Riposte</i> is a reaction: tap it when a monster hits you.',
+      '<b>Items make your character.</b> Weapons, shields and trinkets give skills while worn. Tomes and scrolls teach skills for good. Potions and scrolls go in your bag (the starting pouch holds 1).',
+      '<b>Win</b> by defeating the Warden of the Black Gate. If your HP reaches 0, you die and the run is over.',
+    ],
+    extras: [
+      { label: '📜 Full rules', href: 'docs/delve-rules.md' },
+      { label: '🎨 Art concept', href: 'docs/delve-art-concept.html' },
+    ],
+  },
 ];
