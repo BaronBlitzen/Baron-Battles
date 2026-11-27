@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delve – art concept</title>
+<style>
+  :root { --bg:#09080b; --panel:#131116; --line:#2a2530; --text:#d9d0c1; --dim:#8a8178; --gold:#c9a227; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:Georgia, 'Times New Roman', serif; padding:24px 16px 60px; }
+  .wrap { max-width:1000px; margin:0 auto; }
+  h1 { font-size:34px; letter-spacing:4px; margin:0 0 4px; color:#e8dcc4; text-shadow:0 0 22px rgba(255,140,60,.25); }
+  h2 { font-size:19px; letter-spacing:3px; color:var(--gold); margin:40px 0 10px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+  p.note { color:var(--dim); margin:4px 0 14px; line-height:1.5; }
+  canvas { image-rendering:pixelated; image-rendering:crisp-edges; display:block; }
+
+  /* TV */
+  .tvbox { position:relative; width:960px; max-width:100%; border:8px solid #18151b; border-radius:6px; background:#000; container-type:inline-size; }
+  #tv { width:100%; height:auto; }
+  .ov { position:absolute; pointer-events:none; }
+  .banner { left:0; width:70%; top:3%; text-align:center; }
+  .banner b { display:block; font-size:4.2cqw; letter-spacing:.5cqw; color:#e8d3b0; text-shadow:0 0 1cqw #000, 0 0 2cqw rgba(160,30,20,.6); }
+  .banner span { font-size:1.8cqw; color:#b8a890; font-style:italic; text-shadow:0 0 .6cqw #000; }
+  .dmg { left:47%; top:40%; font-size:4cqw; font-weight:bold; color:#ff6a4a; text-shadow:0 0 .5cqw #000, .2cqw .2cqw 0 #000; animation:rise 1.8s ease-out infinite; }
+  @keyframes rise { 0% { transform:translateY(2cqw); opacity:0; } 15% { opacity:1; } 70% { opacity:1; } 100% { transform:translateY(-4cqw); opacity:0; } }
+  .roll { left:2%; bottom:4%; font-size:1.7cqw; color:#9cc7ff; background:rgba(6,5,8,.75); border:1px solid #2a2530; padding:.5cqw 1cqw; border-radius:.4cqw; }
+  .maptitle { left:70%; width:30%; top:2.4%; text-align:center; font-size:1.6cqw; letter-spacing:.4cqw; color:var(--gold); }
+  .status { left:79%; top:69%; width:19%; font-size:1.5cqw; line-height:1.35; }
+  .status b { color:#e8dcc4; font-size:1.7cqw; display:block; }
+  .status .hp { height:1.1cqw; background:#2a1515; border:1px solid #000; margin-top:.6cqw; }
+  .status .hp i { display:block; height:100%; width:72%; background:linear-gradient(#c23a2e,#6e1512); }
+  .status small { color:var(--dim); }
+
+  .grid { display:flex; flex-wrap:wrap; gap:14px; }
+  .card { background:radial-gradient(ellipse at 50% 85%, #3a2416 0%, #140f10 55%, #0c0a0d 100%); border:1px solid var(--line); border-radius:6px; padding:16px 12px 10px; text-align:center; width:178px; }
+  .card canvas { margin:0 auto 10px; }
+  .card b { display:block; font-size:14px; letter-spacing:1px; }
+  .card span { font-size:12px; color:var(--dim); display:block; line-height:1.4; }
+
+  .phones { display:flex; flex-wrap:wrap; gap:24px; }
+  .phone { width:290px; background:#060507; border:10px solid #1a171d; border-radius:30px; padding:16px 14px; font-size:14px; }
+  .phone .title { text-align:center; letter-spacing:2px; color:var(--gold); font-size:13px; margin-bottom:10px; }
+  .bar { height:12px; background:#2a1515; border:1px solid #000; border-radius:2px; overflow:hidden; margin:3px 0 8px; }
+  .bar i { display:block; height:100%; background:linear-gradient(#c23a2e,#6e1512); }
+  .bar.xp i { background:linear-gradient(#6e8fd1,#2f4372); }
+  .row { display:flex; justify-content:space-between; font-size:12px; color:var(--dim); }
+  .foe { display:flex; justify-content:center; background:radial-gradient(ellipse at 50% 90%, #3d2414 0%, #0b090c 70%); border-radius:8px; padding:12px 0 6px; margin-bottom:8px; }
+  .log { background:#0f0d11; border:1px solid var(--line); border-radius:4px; padding:8px; font-size:12px; line-height:1.55; margin:8px 0 10px; }
+  .log .hit { color:#e2a65a; } .log .roll2 { color:#9cc7ff; } .log .hurt { color:#d0574a; }
+  .btns { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .btn { background:#1e1a21; border:1px solid #3a333e; border-bottom:3px solid #070608; text-align:center; padding:12px 0; border-radius:4px; letter-spacing:2px; }
+  .btn small { display:block; font-size:10px; letter-spacing:1px; color:var(--dim); margin-top:2px; }
+  .btn.red { background:#4a1714; border-color:#7a2a23; }
+  .btn.cd { opacity:.45; }
+  .btn.back { color:var(--dim); font-size:12px; letter-spacing:1px; }
+  .compass { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:14px 0; }
+  .compass .mid { display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--dim); text-align:center; }
+  .stats { display:grid; grid-template-columns:repeat(6, 1fr); gap:4px; text-align:center; margin:8px 0; }
+  .stats div { background:#131016; border:1px solid #332d37; border-radius:4px; padding:4px 0; font-size:11px; color:var(--dim); }
+  .stats b { display:block; color:var(--text); font-size:15px; }
+  .slots { display:grid; grid-template-columns:repeat(2, 1fr); gap:5px; font-size:12px; }
+  .slots div { background:#131016; border:1px solid #332d37; border-radius:4px; padding:6px 8px; color:var(--dim); }
+  .slots div b { color:var(--text); font-weight:normal; float:right; }
+  .slots div.empty b { color:#4c4550; }
+  .hint { font-size:12px; color:#b8a890; font-style:italic; text-align:center; margin:6px 0 2px; }
+  .skills { font-size:12px; color:var(--dim); margin-top:10px; }
+  .skills b { color:var(--text); font-weight:normal; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DELVE THE BLACK LABYRINTH</h1>
+  <p class="note">Art concept v4, not the game. A labyrinth of rooms where each room you enter is a stage and something happens to you.</p>
+
+  <h2>TV VIEW</h2>
+  <p class="note"><b>Left:</b> the room you're in, shown from the side. Your hero is on the left and whatever lives in the room is on the right. The three archways are this room's doors (west, north, east). <b>Right:</b> the room map. Icons mark visited rooms, <b style="color:#c9a227">?</b> marks a door you've seen but not gone through, and your current room glows.</p>
+  <div class="tvbox">
+    <canvas id="tv"></canvas>
+    <div class="ov banner"><b>SKELETON KNIGHT</b><span>Its oath outlived its flesh.</span></div>
+    <div class="ov dmg">−9</div>
+    <div class="ov roll">🎲 d20 (13) + STR 2 + Stab 2 = <b>17</b> vs 14 · Hit!</div>
+    <div class="ov maptitle">THE LABYRINTH</div>
+    <div class="ov status"><b>Aldric</b><small>Deserter · Lv 2</small><div class="hp"><i></i></div><small>HP 18 / 25</small></div>
+  </div>
+  <p class="note" style="margin-top:10px">Later, with 2–4 players, the TV splits into 2 or 4 copies of this view, one per player.</p>
+
+  <h2>BACKGROUNDS</h2>
+  <p class="note">Your background is only where you start. What you find in the labyrinth makes your character.</p>
+  <div class="grid" id="heroes"></div>
+
+  <h2>DENIZENS</h2>
+  <div class="grid" id="monsters"></div>
+
+  <h2>PHONE SCREENS</h2>
+  <div class="phones">
+    <div class="phone">
+      <div class="title">ROOM CLEARED</div>
+      <div class="row"><span>HP</span><span>18 / 25</span></div>
+      <div class="bar"><i style="width:72%"></i></div>
+      <div class="hint">"Claws scrape stone somewhere to the east…"</div>
+      <div class="compass">
+        <div></div><div class="btn">NORTH</div><div></div>
+        <div class="btn">WEST</div><div class="mid">Choose<br>a door</div><div class="btn">EAST</div>
+        <div></div><div class="btn back">↩ SOUTH<br>(came from)</div><div></div>
+      </div>
+      <div class="btns"><div class="btn">CHARACTER</div><div class="btn">BAG</div></div>
+    </div>
+
+    <div class="phone">
+      <div class="title">⚔ SKELETON KNIGHT ⚔</div>
+      <div class="foe" id="foe"></div>
+      <div class="row"><span>Skeleton Knight</span><span>7 / 16</span></div>
+      <div class="bar"><i style="width:44%"></i></div>
+      <div class="row"><span>Aldric</span><span>18 / 25</span></div>
+      <div class="bar"><i style="width:72%"></i></div>
+      <div class="log">
+        <div class="roll2">🎲 d20 (13) + STR 2 + Stab 2 = <b>17</b> vs 14</div>
+        <div class="hit">Stab! You deal <b>9</b> damage.</div>
+        <div class="hurt">The knight's blade bites for 5.</div>
+      </div>
+      <div class="btns">
+        <div class="btn red">ATTACK</div>
+        <div class="btn cd">SKILL<small>Stab: 2 rounds</small></div>
+        <div class="btn">ITEM<small>Pouch empty</small></div>
+        <div class="btn">FLEE</div>
+      </div>
+    </div>
+
+    <div class="phone">
+      <div class="title">ALDRIC · DESERTER · LV 2</div>
+      <div class="row"><span>HP</span><span>18 / 25</span></div>
+      <div class="bar"><i style="width:72%"></i></div>
+      <div class="row"><span>XP</span><span>40 / 100</span></div>
+      <div class="bar xp"><i style="width:40%"></i></div>
+      <div class="stats">
+        <div>STR<b>15</b></div><div>DEX<b>11</b></div><div>CON<b>14</b></div>
+        <div>INT<b>9</b></div><div>WIS<b>10</b></div><div>CHA<b>8</b></div>
+      </div>
+      <div class="slots">
+        <div>R. hand <b>Longsword</b></div><div class="empty">L. hand <b>—</b></div>
+        <div class="empty">Head <b>—</b></div><div>Chest <b>Chainmail</b></div>
+        <div class="empty">Legs <b>—</b></div><div class="empty">Feet <b>—</b></div>
+        <div class="empty">Back <b>—</b></div><div class="empty">Trinket <b>—</b></div>
+        <div class="empty">Trinket <b>—</b></div><div class="empty">Trinket <b>—</b></div>
+      </div>
+      <div class="skills">Skills: <b>Stab</b> (cooldown 3)</div>
+      <div class="row" style="margin-top:8px"><span>Pouch (0/1)</span><span>empty</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- materials: [shadow, mid, light] ----------
+// lowercase = auto-shaded (light from top-left), UPPERCASE = forced shadow tone,
+// k = drawn black, glow letters are flat. Outlines are added automatically.
+const RAMP = {
+  a: ['#3a3e46', '#6c727c', '#a7adb5'], // steel
+  r: ['#45120f', '#7a2219', '#a93a2a'], // red cloth
+  l: ['#2a1a12', '#4e3222', '#744c32'], // leather / brown robe
+  c: ['#181d21', '#2c3439', '#45505a'], // dark cloth
+  s: ['#6b4c3c', '#a27a5e', '#cfa685'], // skin
+  b: ['#776e5c', '#b3a88c', '#e3d8bd'], // bone / linen / rope
+  y: ['#57410f', '#957525', '#d0ab45'], // brass / gold
+  h: ['#110f15', '#1f1c26', '#312c3b'], // black hood / hair
+  u: ['#141c33', '#24335a', '#3b5288'], // apprentice blue
+  t: ['#3a1d10', '#6b3a1e', '#9a5a2c'], // rust
+  m: ['#1f1712', '#3d2c20', '#5e4532'], // dark fur
+  d: ['#3a0909', '#6b1410', '#962219'], // blood
+  n: ['#262422', '#45403b', '#6a635a'], // mangy gray hide
+  w: ['#2b1b10', '#4b321f', '#6d4a2d'], // wood
+};
+const FLAT = { k: '#0b090d', f: '#ff8a2a', q: '#ffe38a', g: '#8dff62', e: '#ff3b2a', v: '#9fd8ff', V: '#e6f6ff' };
+const OUTLINE = '#0b090d';
+
+const SPR = {
+  deserter: [
+    "......hhhh........",
+    ".....hhhhhh.......",
+    ".....hsssshh......",
+    ".....skssks.......",
+    ".....ssssss.......",
+    ".....shhhhs.......",
+    "......ssss........",
+    "....aAaAaAaA......",
+    "...aAaAaAaAaA.....",
+    "...aaAaAaAaAaa....",
+    "...aa.AaAaAa.aa...",
+    "...aa.aAaAaA.aa...",
+    "...ss.lllyll.ss...",
+    "..yyy.aAaAaA......",
+    "...a..aAaAaA......",
+    "...a..rrrrrr......",
+    "...a..rrRrrr......",
+    "...a..rr.rRr......",
+    "...a..ll..ll......",
+    "...a..ll..ll......",
+    "......ll..ll......",
+    "......ll..ll......",
+    ".....lll..lll.....",
+  ],
+  noble: [
+    ".a........bb......",
+    ".a...hhhhhbb......",
+    ".a..hhhhhhhb......",
+    ".a.hhhhhhhhhhh....",
+    ".a...ssssss.......",
+    ".a...skssks.......",
+    ".a...ssssss.......",
+    ".a....sSSs........",
+    ".a...bbbbbb.......",
+    ".a..rrbbbbrr......",
+    ".a.rrrrybrrrr.....",
+    ".a.rr.rybrrrr.....",
+    "yyyrr.rybrr.rr....",
+    ".ss...ryyyr..rr...",
+    "......rrrrr..ss...",
+    "......rrrrrr......",
+    "......rrRrrr......",
+    "......cc..cc......",
+    "......cc..cc......",
+    "......cc..cc......",
+    ".....lll..lll.....",
+  ],
+  pilgrim: [
+    ".......llll.......",
+    "......llllll......",
+    ".....llllllll.....",
+    ".....llssssll.....",
+    ".....lskssksl.....",
+    ".....lssssssl.....",
+    ".....llsSSsll.....",
+    "....llllllllll....",
+    "...llllllyllllll..",
+    "...ll.llyyylll.ll.",
+    "...ll.lllylll..ll.",
+    "...ss.lllylll..ss.",
+    "...w..lllllll.....",
+    "...w..bbbbbbb.....",
+    "..aaa.lllllll.....",
+    "..aAa.lllllll.....",
+    "......llllllll....",
+    ".....lllLlllll....",
+    ".....llLllllLl....",
+    "....lllLllllLll...",
+    "......ss...ss.....",
+  ],
+  aspirant: [
+    ".............v....",
+    "............vVv...",
+    ".......uu....v....",
+    "......uuu....w....",
+    ".....uuuu....w....",
+    "....uuuuuu...w....",
+    "..uuuuuuuuuu.w....",
+    ".....ssssss..w....",
+    ".....skssks..w....",
+    ".....ssssss..w....",
+    "......ssss...w....",
+    ".....uuyuuu..w....",
+    "....uuuyuuuusw....",
+    "...uuuuyuuuu.w....",
+    "...uu.uuyuuu.w....",
+    "...ss.uuuuuu.w....",
+    "......uuuuuu.w....",
+    ".....uuuUuuu.w....",
+    ".....uuUuuuU.w....",
+    "....uuuUuuuUuw....",
+    "......ll...ll.....",
+  ],
+  graverobber: [
+    "......hhhh........",
+    ".....hhhhhh.......",
+    "....hhhhhhhh......",
+    "....hhskssksh.....",
+    "....hhssssssh.....",
+    "....hhcccccch.....",
+    ".....hcccccch.....",
+    "....hhhhhhhhhh....",
+    "...llhhhhhhhhll...",
+    "...ll.llllll.ll...",
+    "...ll.llylll.ll...",
+    "...ss.lyylll.ss...",
+    ".....ayllllll.w...",
+    "......llllll..w...",
+    "......cccccc..w...",
+    "......cccccc..w...",
+    "......cc..cc..w...",
+    "......cc..cc.aaa..",
+    "......cc..cc.aaa..",
+    ".....lll..lll.a...",
+  ],
+  skeleton: [
+    ".....................a",
+    "....................a.",
+    ".......tttt........a..",
+    "......tttttt......a...",
+    ".....tttttttt....a....",
+    ".....tkkkkkkt...a.....",
+    ".....tbekkebt..a......",
+    ".....tbbbbbbt.a.......",
+    "......bkbkbk.yyy......",
+    ".......bbbb...b.......",
+    "....tttbbbbttbb.......",
+    "..ttttkbbbbktt........",
+    ".tttt.bkbbbbkb........",
+    ".taat.bbkbbkbb........",
+    ".tayt.bkbbbbkb........",
+    ".taat..bkbbkb.........",
+    ".tttt..tttttt.........",
+    "..tt...b.bb.b.........",
+    ".......hhhhhh.........",
+    "......hh.hh.h.........",
+    "......bb...bb.........",
+    "......bb...bb.........",
+    "......bb...bb.........",
+    ".....ttt...ttt........",
+  ],
+  werewolf: [
+    "..........m....m........",
+    ".........mm...mm........",
+    "........mmmmmmmm........",
+    ".......mmmmmmmmmm.......",
+    "......mmqmmmmqmmm.......",
+    "......mmmmmmmmmmm.......",
+    ".....mmmMbbbbbMmmm......",
+    ".....mmMbkbkbkbMmm......",
+    "......mmdbdbdbdmm.......",
+    "....mmmmmmddmmmmmmm.....",
+    "..mmmmmmmmmmmmmmmmmmm...",
+    ".mmmmmmmmMmmmMmmmmmmmm..",
+    ".mmm.mmmmmMmmMmmmm.mmm..",
+    "mmm..mmmmmmmmmmmmm..mmm.",
+    "mm...mmmmmmmmmmmmm...mm.",
+    "mm...mmmmsssssmmmm...mm.",
+    "bmb...mmmmmmmmmmm...bmb.",
+    "b.b...mmmmmmmmmmm...b.b.",
+    "......mmmmMmmmmmm.......",
+    ".....mmmm....mmmmm......",
+    ".....mmm......mmmm......",
+    "....mmm........mmm......",
+    "....mmm........mmm......",
+    "...bmbm.......mbmb......",
+  ],
+  hound: [
+    "....................nn..",
+    "...................nnn..",
+    "n.................nnnnn.",
+    "nn.......nnnnnnnnnnennbb",
+    ".nnnnnnnnnnnnnnnnnnnnnbb",
+    "..nnnnNnnNnnNnnnnnndbk..",
+    "..nnnNnnNnnNnnnnnn.bb...",
+    "...nnnnnnnnnnnnnn.......",
+    "...nnn.nn....nnnn.......",
+    "...nn..nn....nn.nn......",
+    "..nn...nn...nn...nn.....",
+    "..bb...bb...bb...bb.....",
+  ],
+  chest: [
+    "..wwwwwwwwwwww..",
+    ".wwwwwwwwwwwwww.",
+    ".wyywwwwwwwwyyw.",
+    ".yyyyyyyyyyyyyy.",
+    ".wwwwwwyywwwwww.",
+    ".wwwwwwykwwwwww.",
+    ".wyywwwwwwwwyyw.",
+    ".wwwwwwwwwwwwww.",
+    ".WWWWWWWWWWWWWW.",
+  ],
+};
+
+// ---------- sprite builder: auto shading + outline ----------
+function hash(x, y, k = 0) { let h = (x * 374761393 + y * 668265263 + k * 1442695041) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
+const cache = {};
+function sprite(id) {
+  if (cache[id]) return cache[id];
+  const rows = SPR[id];
+  const w = Math.max(...rows.map(r => r.length)) + 2, h = rows.length + 2;
+  const at = (x, y) => (rows[y - 1] || '')[x - 1] || '.';
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const g = cv.getContext('2d');
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ch = at(x, y);
+    let col = null;
+    if (ch === '.') {
+      if ([[1,0],[-1,0],[0,1],[0,-1]].some(([dx, dy]) => at(x + dx, y + dy) !== '.')) col = OUTLINE;
+    } else if (FLAT[ch]) col = FLAT[ch];
+    else {
+      const m = ch.toLowerCase(), ramp = RAMP[m];
+      if (!ramp) { console.warn('unknown letter', ch, id); continue; }
+      const same = (dx, dy) => at(x + dx, y + dy).toLowerCase() === m;
+      let t;
+      if (ch !== m) t = 0;
+      else if (!same(0, -1)) t = 2;
+      else if (!same(1, 0) && !same(-1, 0)) t = 2; // 1px-wide parts (blades, staffs) stay bright
+      else if (!same(1, 0) || !same(0, 1)) t = 0;
+      else if (!same(-1, 0)) t = 2;
+      else t = 1;
+      if (ch === m && hash(x, y, id.length) < .12) t = Math.max(0, t - 1);
+      col = ramp[t];
+    }
+    if (col) { g.fillStyle = col; g.fillRect(x, y, 1, 1); }
+  }
+  return (cache[id] = cv);
+}
+function scaled(id, s, flip = false) {
+  const src = sprite(id), cv = document.createElement('canvas');
+  cv.width = src.width * s; cv.height = src.height * s;
+  const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+  if (flip) { g.translate(cv.width, 0); g.scale(-1, 1); }
+  g.drawImage(src, 0, 0, cv.width, cv.height);
+  return cv;
+}
+function card(parent, id, name, sub, s = 6) {
+  const d = document.createElement('div'); d.className = 'card';
+  d.appendChild(scaled(id, s));
+  d.insertAdjacentHTML('beforeend', `<b>${name}</b><span>${sub}</span>`);
+  document.getElementById(parent).appendChild(d);
+}
+card('heroes', 'deserter', 'Deserter', 'STR · CON<br>Longsword, chainmail<br><i>Stab</i>');
+card('heroes', 'noble', "Noble's Heir", 'CHA · DEX<br>Rapier, fine coat<br><i>Riposte</i>');
+card('heroes', 'pilgrim', 'Pilgrim', 'WIS · CON<br>Holy symbol, robes, mace<br><i>Prayer</i>');
+card('heroes', 'aspirant', 'Aspirant', 'INT · WIS<br>Robes, staff<br><i>1 starting spell</i>');
+card('heroes', 'graverobber', 'Grave Robber', 'DEX · INT<br>Shovel, hood, lockpicks<br><i>Pick Lock</i>');
+card('monsters', 'skeleton', 'Skeleton Knight', 'normal');
+card('monsters', 'hound', 'Grave Hound', 'normal');
+card('monsters', 'werewolf', 'Werewolf', 'tough', 5);
+card('monsters', 'chest', 'Chest', '…or is it?', 7);
+document.getElementById('foe').appendChild(scaled('skeleton', 6, true));
+
+// ================= TV =================
+const W = 480, H = 270, SW = 336; // whole TV, scene width
+const tv = document.getElementById('tv'); tv.width = W; tv.height = H;
+const ctx = tv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+
+// ----- static room scene (fully lit colors; lighting is multiplied on top) -----
+const scene = document.createElement('canvas'); scene.width = SW; scene.height = H;
+const s = scene.getContext('2d');
+const P = (c, x, y, w = 1, h = 1) => { s.fillStyle = c; s.fillRect(x, y, w, h); };
+const pick = (arr, r) => arr[Math.floor(r * arr.length)];
+const FLOOR_Y = 178;
+const BRICK = ['#5a544c', '#524c45', '#615a51', '#4b4640', '#57514a'];
+const STONE = ['#6a6c72', '#62646b', '#70727a', '#5c5e65', '#68645f'];
+
+// back wall bricks
+P('#1d1b19', 0, 0, SW, FLOOR_Y);
+for (let r = 0; r * 8 < FLOOR_Y; r++) {
+  const off = (r % 2) * 8;
+  for (let c = -1; c * 16 < SW; c++) {
+    const x = c * 16 + off, y = r * 8;
+    P(pick(BRICK, hash(c, r, 3)), x + 1, y + 1, 15, 7);
+    P('rgba(255,240,220,.08)', x + 1, y + 1, 15, 1);
+    if (hash(c, r, 4) > .7) P('rgba(0,0,0,.18)', x + 2 + Math.floor(hash(c, r, 5) * 10), y + 3, 3, 2);
+  }
+}
+// arches (doorways): west, north, east
+const ARCH = [{ cx: 56 }, { cx: 168 }, { cx: 280 }];
+const SPRING = 82, RI = 25, RO = 31;
+ARCH.forEach(({ cx }, ai) => {
+  for (let y = SPRING - RO; y < FLOOR_Y; y++) for (let x = cx - RO; x <= cx + RO; x++) {
+    const dx = x - cx, dy = y - SPRING;
+    const dist = y <= SPRING ? Math.hypot(dx, dy) : Math.abs(dx);
+    if (dist <= RI) P(y > FLOOR_Y - 30 ? '#0a090d' : '#060509', x, y);
+    else if (dist <= RO) {
+      const seg = y <= SPRING ? Math.floor((Math.atan2(dy, dx) + Math.PI) / (Math.PI / 9)) : Math.floor((y - SPRING) / 9) + 20;
+      const edge = y <= SPRING ? ((Math.atan2(dy, dx) + Math.PI) % (Math.PI / 9)) < .05 : (y - SPRING) % 9 === 0;
+      P(edge ? '#2a2724' : (hash(seg, ai, 9) > .5 ? '#7a756c' : '#706a62'), x, y);
+      if (dist > RO - 1.2 && !edge) P('#8d877d', x, y);
+    }
+  }
+  P('#8a847a', cx - 4, SPRING - RO - 2, 9, 8); P('#2a2724', cx - 4, SPRING - RO + 6, 9, 1);
+  for (let i = 0; i < 12; i++) { P('rgba(220,215,200,.35)', cx - RI + 3 + i, SPRING - 18 + i, 1, 1); P('rgba(220,215,200,.3)', cx - RI + 3, SPRING - 18 + i, 1, 1); }
+  for (let i = 0; i < 8; i++) P('rgba(220,215,200,.3)', cx - RI + 3 + i, SPRING - 12 + Math.floor(i * .4), 1, 1);
+  for (let i = 0; i < 10; i++) P('rgba(220,215,200,.3)', cx + RI - 4 - i, SPRING - 14 + i, 1, 1);
+  P('#0e0c11', cx - 7, FLOOR_Y - 26, 14, 26); P('#15121a', cx - 6, FLOOR_Y - 25, 12, 25);
+});
+// pillars with capitals
+[112, 224].forEach((px, i) => {
+  P('#2a2724', px - 9, 22, 18, FLOOR_Y - 22);
+  for (let y = 24; y < FLOOR_Y; y++) {
+    P('#77716a', px - 7, y, 3, 1); P('#68625b', px - 4, y, 8, 1); P('#4e4943', px + 4, y, 3, 1);
+    if ((y - 24) % 14 === 0) P('#2a2724', px - 7, y, 14, 1);
+  }
+  P('#827c72', px - 11, 16, 22, 6); P('#5e5952', px - 11, 21, 22, 2); P('#2a2724', px - 11, 23, 22, 1);
+  P('#827c72', px - 11, FLOOR_Y - 6, 22, 6); P('#5e5952', px - 11, FLOOR_Y - 2, 22, 2);
+  P('#2b2e33', px - 2, 96, 4, 6); P('#3a3e46', px - 4, 94, 8, 2);
+  if (i === 0) {
+    for (let y = 26; y < 76; y++) {
+      const w = y > 66 ? 12 - (y % 3) * 3 : 12;
+      P(y < 28 ? '#2b1b10' : '#6b1a15', px - 6, y, w, 1);
+      if (y >= 28) { P('#4a120f', px - 6, y, 2, 1); P('#8a2a1e', px - 3, y, 1, 1); }
+    }
+    for (let y = 40; y < 52; y++) P('#957525', px - 1, y, 2, 1);
+    P('#957525', px - 4, 44, 8, 2);
+    P('#1d1b19', px + 2, 58, 4, 4); P('#1d1b19', px - 5, 70, 3, 6);
+  }
+});
+// hanging chains
+[[140, 46], [196, 34]].forEach(([cx, len]) => {
+  for (let y = 0; y < len; y += 4) { P('#4a4d54', cx - 1, y, 3, 3); P('#1d1b19', cx, y + 1, 1, 1); }
+  P('#5a5e66', cx - 3, len, 7, 3); P('#1d1b19', cx - 1, len + 1, 3, 2);
+});
+// floor flagstones with perspective rows
+P('#202024', 0, FLOOR_Y, SW, H - FLOOR_Y);
+let fy = FLOOR_Y, row = 0;
+for (const rh of [9, 11, 13, 16, 19, 23, 27]) {
+  const bw = 22 + row * 9, off = Math.floor(hash(row, 1, 2) * bw);
+  for (let x = -off; x < SW; x += bw) {
+    const w = bw - 1 - Math.floor(hash(x, row, 6) * 4);
+    P(pick(STONE, hash(x, row, 7)), x + 1, fy + 1, w, rh - 1);
+    P('rgba(255,255,255,.07)', x + 1, fy + 1, w, 1);
+    P('rgba(0,0,0,.25)', x + 1, fy + rh - 1, w, 1);
+    for (let k = 0; k < 6; k++) P('rgba(0,0,0,.15)', x + 2 + Math.floor(hash(x, row, k + 20) * (w - 3)), fy + 2 + Math.floor(hash(row, x, k + 30) * (rh - 3)), 2, 1);
+  }
+  fy += rh; row++;
+}
+P('rgba(0,0,0,.55)', 0, FLOOR_Y, SW, 3);
+[[4, FLOOR_Y - 4, 14], [90, FLOOR_Y - 3, 9], [300, FLOOR_Y - 5, 18], [36, 140, 6]].forEach(([x, y, w]) => {
+  for (let i = 0; i < w; i++) { const hgt = 1 + Math.floor(hash(x + i, y, 4) * 4); P(i % 2 ? '#3d5a28' : '#4f7232', x + i, y + 4 - hgt, 1, hgt); }
+});
+const blood = (bx, by, w) => { P('#4a0e0c', bx, by, w, 4); P('#4a0e0c', bx + 3, by - 1, w - 6, 6); P('#6b1410', bx + 4, by, w - 10, 2); };
+blood(212, 238, 34); for (let i = 0; i < 26; i++) P('#4a0e0c', 186 + i, 233 + Math.floor(i / 9), 2, 1);
+[[300, 192], [314, 196], [18, 196]].forEach(([x, y]) => { P('#b3a88c', x, y, 7, 6); P('#e3d8bd', x + 1, y, 4, 2); P('#0b090d', x + 1, y + 2, 2, 2); P('#0b090d', x + 4, y + 2, 2, 2); P('#776e5c', x + 2, y + 5, 3, 1); });
+P('#b3a88c', 296, 201, 12, 2); P('#e3d8bd', 296, 201, 2, 2); P('#e3d8bd', 306, 201, 2, 2);
+
+// ----- light map, recomputed every frame (chunky bands) -----
+const LB = 2, LW = SW / LB, LH = H / LB;
+const lc = document.createElement('canvas'); lc.width = LW; lc.height = LH;
+const lctx = lc.getContext('2d'); const img = lctx.createImageData(LW, LH);
+const HERO = { id: 'deserter', x: 96, feet: 240 };
+const FOE = { id: 'skeleton', x: 238, feet: 240 };
+const heroSpr = scaled(HERO.id, 3), foeSpr = scaled(FOE.id, 3, true);
+const SCONCES = [{ x: 112, y: 90 }, { x: 224, y: 90 }];
+
+// ----- room map panel -----
+const MAPX = 342, MAPY = 34, CELL = 16, GAP = 4;
+const ROOMS = {
+  '3,6': 'entrance', '3,5': 'skull', '2,5': 'chest', '4,5': 'shrine', '4,4': 'here',
+  '3,4': '?', '4,3': '?', '5,4': '?', '2,4': '?', '5,5': '?',
+};
+const DOORS = [['3,6', '3,5'], ['3,5', '2,5'], ['3,5', '4,5'], ['4,5', '4,4'], ['4,4', '3,4'], ['4,4', '4,3'], ['4,4', '5,4'], ['2,5', '2,4'], ['4,5', '5,5']];
+const ICONS = {
+  skull:    ['.bbbbb.', 'bbbbbbb', 'bkbbbkb', 'bkbbbkb', 'bbbkbbb', '.bbbbb.', '.b.b.b.'],
+  chest:    ['.......', '.wwwww.', 'wwwwwww', 'yyyyyyy', 'wwwywww', 'wwwwwww', 'WWWWWWW'],
+  shrine:   ['...q...', '..qfq..', '...f...', '..yyy..', '...y...', '..yyy..', '.yyyyy.'],
+  entrance: ['...b...', '..bbb..', '.bbbbb.', '...b...', '...b...', '...b...', '.......'],
+  q:        ['.yyyy..', 'y....y.', '.....y.', '...yy..', '...y...', '.......', '...y...'],
+  hero:     ['..hhh..', '..sss..', '..sss..', '.aaaaa.', 'a.aaa.a', '..r.r..', '..l.l..'],
+};
+function iconColor(ch) { return FLAT[ch] || (RAMP[ch.toLowerCase()] || [])[ch === ch.toUpperCase() ? 0 : 2]; }
+function drawIcon(g, rows, x, y, a) {
+  g.globalAlpha = a;
+  rows.forEach((r, ry) => [...r].forEach((ch, rx) => { if (ch === '.') return; g.fillStyle = iconColor(ch); g.fillRect(x + rx, y + ry, 1, 1); }));
+  g.globalAlpha = 1;
+}
+function drawMap(g, t) {
+  g.fillStyle = '#0a090c'; g.fillRect(SW, 0, W - SW, H);
+  g.fillStyle = '#2a2530'; g.fillRect(SW, 0, 1, H);
+  const cx = (k) => MAPX + +k.split(',')[0] * (CELL + GAP), cy = (k) => MAPY + +k.split(',')[1] * (CELL + GAP);
+  g.fillStyle = '#16141a';
+  for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) g.fillRect(MAPX + x * (CELL + GAP) + 7, MAPY + y * (CELL + GAP) + 7, 2, 2);
+  DOORS.forEach(([a, b]) => {
+    const ax = cx(a) + CELL / 2, ay = cy(a) + CELL / 2, bx = cx(b) + CELL / 2, by = cy(b) + CELL / 2;
+    g.fillStyle = (ROOMS[a] === '?' || ROOMS[b] === '?') ? '#3a3328' : '#6a5a3a';
+    if (ax === bx) g.fillRect(ax - 2, Math.min(ay, by), 4, Math.abs(by - ay)); else g.fillRect(Math.min(ax, bx), ay - 2, Math.abs(bx - ax), 4);
+  });
+  Object.entries(ROOMS).forEach(([k, type]) => {
+    const x = cx(k), y = cy(k);
+    if (type === '?') {
+      g.fillStyle = '#0b090d'; g.fillRect(x, y, CELL, CELL);
+      g.fillStyle = '#3a3328'; g.fillRect(x, y, CELL, 1); g.fillRect(x, y + CELL - 1, CELL, 1); g.fillRect(x, y, 1, CELL); g.fillRect(x + CELL - 1, y, 1, CELL);
+      drawIcon(g, ICONS.q, x + 5, y + 5, .7);
+      return;
+    }
+    g.fillStyle = '#0b090d'; g.fillRect(x - 1, y - 1, CELL + 2, CELL + 2);
+    g.fillStyle = '#4a4640'; g.fillRect(x, y, CELL, CELL);
+    g.fillStyle = '#5a554e'; g.fillRect(x, y, CELL, 1); g.fillRect(x, y, 1, CELL);
+    g.fillStyle = '#2f2c28'; g.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+    if (type === 'here') {
+      const pulse = .55 + .45 * Math.sin(t / 300);
+      g.fillStyle = `rgba(255,140,50,${.35 + .4 * pulse})`;
+      g.fillRect(x - 2, y - 2, CELL + 4, 2); g.fillRect(x - 2, y + CELL, CELL + 4, 2); g.fillRect(x - 2, y, 2, CELL); g.fillRect(x + CELL, y, 2, CELL);
+      g.fillStyle = '#3a2416'; g.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+      drawIcon(g, ICONS.hero, x + 5, y + 4, 1);
+    } else drawIcon(g, ICONS[type], x + 5, y + 5, 1);
+  });
+  // portrait in the status block
+  g.fillStyle = '#2a2530'; g.fillRect(SW + 8, 184, 26, 30);
+  g.fillStyle = '#100e12'; g.fillRect(SW + 9, 185, 24, 28);
+  g.drawImage(sprite(HERO.id), 5, 0, 12, 14, SW + 9, 185, 24, 28);
+}
+
+function frame(t) {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(scene, 0, 0);
+  const sway = Math.round(Math.sin(t / 420) * 1);
+  ctx.fillStyle = 'rgba(0,0,0,.45)';
+  ctx.fillRect(HERO.x - 20, HERO.feet - 2, 40, 5); ctx.fillRect(FOE.x - 24, FOE.feet - 2, 48, 5);
+  ctx.drawImage(heroSpr, Math.round(HERO.x - heroSpr.width / 2), HERO.feet - heroSpr.height + 3);
+  ctx.drawImage(foeSpr, Math.round(FOE.x - foeSpr.width / 2) + sway, FOE.feet - foeSpr.height + 3);
+
+  const lights = [
+    ...SCONCES.map((L, i) => ({ x: L.x, y: L.y, r: 92 + Math.sin(t / 150 + i * 2) * 3 + (hash(Math.floor(t / 90), i) - .5) * 6, k: 1 })),
+    { x: HERO.x, y: HERO.feet - 40, r: 66, k: .55 },
+    { x: FOE.x, y: FOE.feet - 40, r: 66, k: .5 },
+  ];
+  const d = img.data;
+  for (let by = 0; by < LH; by++) for (let bx = 0; bx < LW; bx++) {
+    const px = bx * LB + 1, py = by * LB + 1;
+    let v = 0;
+    for (const L of lights) { const dd = Math.hypot(px - L.x, (py - L.y) * 1.15); if (dd < L.r) v += (1 - dd / L.r) * L.k; }
+    for (const A of ARCH) { const dx = px - A.cx, dist = py <= SPRING ? Math.hypot(dx, py - SPRING) : Math.abs(dx); if (dist <= RI && py < FLOOR_Y) v *= .25; }
+    const q = Math.min(1.15, Math.floor(v * 7) / 6);
+    const i = (by * LW + bx) * 4;
+    d[i] = Math.min(255, 30 + q * 230); d[i + 1] = Math.min(255, 36 + q * 175); d[i + 2] = Math.min(255, 56 + q * 100); d[i + 3] = 255;
+  }
+  lctx.putImageData(img, 0, 0);
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(lc, 0, 0, SW, H);
+  ctx.globalCompositeOperation = 'lighter';
+  SCONCES.forEach(L => {
+    const gr = ctx.createRadialGradient(L.x, L.y, 0, L.x, L.y, 30);
+    gr.addColorStop(0, 'rgba(255,150,60,.28)'); gr.addColorStop(1, 'rgba(255,150,60,0)');
+    ctx.fillStyle = gr; ctx.fillRect(L.x - 30, L.y - 30, 60, 60);
+  });
+  ctx.globalCompositeOperation = 'source-over';
+  // red eye glint on the skeleton
+  if (Math.floor(t / 700) % 4 !== 0) {
+    ctx.fillStyle = 'rgba(255,59,42,.35)';
+    ctx.fillRect(FOE.x - 8, FOE.feet - foeSpr.height + 3 + 7 * 3 - 2, 18, 6);
+  }
+  SCONCES.forEach((L, i) => {
+    const f = Math.floor(t / 100 + i * 2) % 3;
+    ctx.fillStyle = '#ff8a2a'; ctx.fillRect(L.x - 2, L.y - 4 - (f === 1 ? 1 : 0), 4, 5);
+    ctx.fillStyle = '#ffe38a'; ctx.fillRect(L.x - 1, L.y - 2 - f % 2, 2, 3);
+    if (f === 2) { ctx.fillStyle = '#ff8a2a'; ctx.fillRect(L.x + (i ? -1 : 1), L.y - 7, 1, 2); }
+  });
+  const vg = ctx.createRadialGradient(SW / 2, H * .55, H * .35, SW / 2, H * .55, H * .95);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.6)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, SW, H);
+
+  drawMap(ctx, t);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
